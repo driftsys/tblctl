@@ -2,6 +2,8 @@
 # runs these recipes and holds no copy of any gate command.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
+# On Windows "bash" can resolve to the WSL stub; Git Bash ships sh.exe.
+set windows-shell := ["sh", "-eu", "-c"]
 
 # List recipes.
 [private]
