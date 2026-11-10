@@ -1,0 +1,23 @@
+[package]
+name = "tblctl"
+version = "0.0.1"
+edition = "2021"
+description = "Hermetic CLI that converts and checks tables for Markdown docs (XLSX/DOCX/CSV)"
+license = "MIT"
+repository = "https://github.com/driftsys/tblctl"
+readme = "README.md"
+keywords = ["cli", "table", "xlsx", "csv", "markdown"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
