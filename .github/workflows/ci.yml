@@ -105,6 +105,6 @@ jobs:
         with:
           version: 0.16.0
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install cargo-zigbuild --version 0.22.3 --locked
+      - run: cargo install cargo-zigbuild --version 0.24.1 --locked
       - run: cargo zigbuild --release --target x86_64-unknown-linux-musl
       - run: cargo zigbuild --release --target aarch64-unknown-linux-musl
