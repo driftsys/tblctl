@@ -1,0 +1,36 @@
+#:schema https://driftsys.github.io/git-std/schemas/v1/git-std.schema.json
+# git-std configuration: conventional commits, semver, changelog, hooks.
+# See https://github.com/driftsys/git-std.
+
+scheme = "semver"
+strict = true
+
+scopes = [
+  "cli",
+  "check",
+  "classify",
+  "import",
+  "export",
+  "docs",
+  "ci",
+  "hooks",
+  "deps",
+  "repo",
+  "install",
+]
+types = [
+  "feat",
+  "fix",
+  "docs",
+  "style",
+  "refactor",
+  "perf",
+  "test",
+  "chore",
+  "ci",
+  "build",
+  "revert",
+]
+
+[versioning]
+tag_prefix = "v"

@@ -1,0 +1,15 @@
+# git-std hooks — commit-msg.hooks
+#
+# Each line is a command run during the commit-msg hook.
+# Prefix controls behavior:
+#
+#   !  check     run command, block commit on failure
+#   ?  advisory  run command, never block commit
+#
+# {msg} expands to the path of the commit-message file.
+#
+# Enable/disable this hook:
+#   git std hook enable commit-msg
+#   git std hook disable commit-msg
+#
+! git std lint --file {msg}
