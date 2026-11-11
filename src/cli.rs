@@ -32,10 +32,25 @@ pub enum Command {
         #[arg(long)]
         out: PathBuf,
     },
-    /// (not yet implemented) Flag Markdown tables over the size limits
+    /// Flag Markdown tables over the T1 size limits
     Check {
         #[arg(required = true)]
         files: Vec<PathBuf>,
+        /// Emit JSON
+        #[arg(long)]
+        json: bool,
+        /// Treat REVIEW as a failure (exit 1)
+        #[arg(long)]
+        strict: bool,
+        /// Maximum data rows for a Markdown table
+        #[arg(long, default_value_t = 30)]
+        max_rows: usize,
+        /// Maximum columns for a Markdown table
+        #[arg(long, default_value_t = 8)]
+        max_cols: usize,
+        /// Maximum characters per cell
+        #[arg(long, default_value_t = 120)]
+        max_cell: usize,
     },
     /// (not yet implemented) Export a Markdown or CSV table back to XLSX
     Export {

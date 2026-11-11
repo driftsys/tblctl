@@ -31,7 +31,6 @@ fn stubs_exit_2_with_tracking_link() {
     for args in [
         &["classify", "a.xlsx", "--json"][..],
         &["import", "a.xlsx", "--out", "a.md"][..],
-        &["check", "a.md"][..],
         &["export", "a.csv", "--out", "a.xlsx"][..],
     ] {
         tblctl()

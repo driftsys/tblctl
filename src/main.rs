@@ -1,4 +1,6 @@
+mod check;
 mod cli;
+mod markdown;
 
 use clap::Parser;
 use cli::{Cli, Command};
@@ -15,7 +17,23 @@ fn main() {
     let result = match cli.command {
         Command::Classify { .. } => not_yet_implemented("classify"),
         Command::Import { .. } => not_yet_implemented("import"),
-        Command::Check { .. } => not_yet_implemented("check"),
+        Command::Check {
+            files,
+            json,
+            strict,
+            max_rows,
+            max_cols,
+            max_cell,
+        } => check::run(
+            &files,
+            &check::Limits {
+                max_rows,
+                max_cols,
+                max_cell,
+            },
+            json,
+            strict,
+        ),
         Command::Export { .. } => not_yet_implemented("export"),
     };
     match result {
