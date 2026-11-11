@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# bootstrap — set up a fresh clone or worktree of this repository.
+#
+# Installs the driftsys toolchain this repo depends on — git-std (commit
+# lint, versioning, changelog, hooks) and prim (connective-tissue
+# formatter) — then hands off to `git std bootstrap`, which wires up the
+# repo-local git hooks in .githooks/. Installs the pinned Rust toolchain from
+# rust-toolchain.toml when rustup is present, and names any other tool
+# `just build` needs that is missing, without installing it.
+
+set -euo pipefail
+
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+export GIT_STD_INSTALL_DIR="${GIT_STD_INSTALL_DIR:-$INSTALL_DIR}"
+export PRIM_INSTALL_DIR="${PRIM_INSTALL_DIR:-$INSTALL_DIR}"
+
+log() { printf '[bootstrap] %s\n' "$*" >&2; }
+
+if command -v git-std >/dev/null 2>&1; then
+  log "git-std already installed: $(command -v git-std)"
+else
+  log "installing git-std"
+  curl -fsSL https://raw.githubusercontent.com/driftsys/git-std/main/install.sh | bash
+fi
+
+if command -v prim >/dev/null 2>&1; then
+  log "prim already installed: $(command -v prim)"
+else
+  log "installing prim"
+  curl -fsSL https://raw.githubusercontent.com/driftsys/prim/main/install.sh | bash
+fi
+
+case ":${PATH}:" in
+  *":${INSTALL_DIR}:"*) ;;
+  *) log "note: ${INSTALL_DIR} is not on PATH — add it to your shell profile" ;;
+esac
+
+log "wiring git hooks via git std bootstrap"
+git std bootstrap
+
+if command -v rustup >/dev/null 2>&1; then
+  log "installing the pinned Rust toolchain from rust-toolchain.toml"
+  rustup show >/dev/null
+fi
+
+missing=0
+require() {
+  if command -v "$1" >/dev/null 2>&1; then
+    log "$1 found: $(command -v "$1")"
+  else
+    log "MISSING $1 — install with: $2"
+    missing=1
+  fi
+}
+
+log "checking the tools 'just build' requires"
+require just "see https://just.systems/man/en/packages.html"
+require rustup "see https://rustup.rs — it is what applies rust-toolchain.toml"
+require shellcheck "see https://github.com/koalaman/shellcheck#installing"
+
+if [ "$missing" -ne 0 ]; then
+  log "'just build' cannot run until the tools listed above are installed"
+  exit 1
+fi
+
+log "ready — run 'just build'"

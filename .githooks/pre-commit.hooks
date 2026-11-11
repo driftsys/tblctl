@@ -1,0 +1,9 @@
+# git-std hooks — pre-commit.hooks
+#
+#   !  check     run command, block commit on failure
+#   ?  advisory  run command, never block commit
+#   ~  format    run command in place, restage the result
+#
+# Format the connective tissue and Rust before committing.
+~ prim .
+~ cargo fmt --all   *.rs

@@ -1,0 +1,7 @@
+# git-std hooks — pre-push.hooks
+#
+#   !  check     run command, block push on failure
+#   ?  advisory  run command, never block push
+#
+# Lint and static-check gate before pushing — see `pre-push` in the justfile.
+! .githooks/pre-push-gate.sh

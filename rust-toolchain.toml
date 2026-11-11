@@ -1,0 +1,12 @@
+# rust-toolchain.toml — the pinned Rust toolchain.
+#
+# rustup applies this to every cargo/rustc call in the repo, locally and in CI,
+# so `cargo fmt --check` and `cargo clippy -D warnings` agree on both sides.
+# Bumping it is a deliberate commit: change `channel`, run `just build`, fix
+# what the new rustfmt and clippy report in the same commit.
+# `just toolchain-check` fails when the running rustc is not this version.
+
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
