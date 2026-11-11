@@ -20,3 +20,8 @@ targets = [
 # Archive formats the install scripts expect (install.sh, install.ps1)
 unix-archive = ".tar.gz"
 windows-archive = ".zip"
+
+[dist.github-custom-runners]
+# GitHub retired macos-14; pin supported runners for the Apple targets.
+aarch64-apple-darwin = "macos-15"
+x86_64-apple-darwin = "macos-15-intel"
