@@ -5,7 +5,8 @@ Instructions for AI coding agents working in this repository.
 ## Project
 
 `tblctl` — converts and checks tables for Markdown docs. Sibling of
-[`diagctl`](https://github.com/driftsys/diagctl). Scope: issue
+[`diagctl`](https://github.com/driftsys/diagctl) and
+[`pixctl`](https://github.com/driftsys/pixctl). Scope: issue
 [#1](https://github.com/driftsys/tblctl/issues/1).
 
 Rust 2021, `clap` derive. Exit contract: `0` clean · `1` ≥1 check failed · `2`
