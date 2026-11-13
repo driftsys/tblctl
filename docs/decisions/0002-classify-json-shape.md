@@ -8,14 +8,16 @@ force" are the `results` field of that envelope.
 ## Context
 
 `classify` reports the rule (T0 to T3) and target format for each table in its
-inputs. Its JSON output should be read by the same tooling that reads pixctl
-`inspect --json`.
+inputs. Its JSON output was meant to be read by the same tooling that reads
+pixctl `inspect --json`. AD-0005 later replaced the array described below with
+an envelope.
 
 ## Options
 
 - One JSON object per input file, with the tables nested inside. Rejected: it
   differs from pixctl.
-- A flat array with one object per table, as pixctl `inspect --json`. Chosen.
+- A flat array with one object per table, as pixctl `inspect --json`. Chosen at
+  the time; superseded by the envelope of AD-0005.
 
 ## Decision
 

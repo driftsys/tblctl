@@ -64,7 +64,8 @@ Rules, first match wins:
 | T2   | CSV      | larger, one visible sheet, no merged data cells, no images, no formulas    |
 | T3   | link     | everything else: a one-line link to the source with sheet and size         |
 
-`classify` prints one line per table and a summary line:
+`classify` prints one line per table and a summary line, except when no input
+could be read:
 
 ```text
 T1  markdown docs/spec.md#line 1  1×2
@@ -85,6 +86,8 @@ PASS    [T1] docs/spec.md:12  3×4
 FAIL    [T1] docs/spec.md:40  45×6 rows 45 > 30; suggest CSV
 2 tables: 1 passed, 1 failed
 ```
+
+The summary line is omitted when no input could be read.
 
 `--strict` is accepted; it will turn `REVIEW` results into failures once a check
 can report `REVIEW`.
