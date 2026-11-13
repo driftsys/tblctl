@@ -1,5 +1,10 @@
 # AD-0002: `classify --json` shape
 
+Superseded in part by [AD-0005](0005-json-envelope-and-human-output.md): the
+array described here is now the `results` field of a JSON envelope, and read
+errors are entries of its `errors` field. The object fields, enum values and
+order below still apply.
+
 ## Context
 
 `classify` reports the rule (T0 to T3) and target format for each table in its
@@ -35,4 +40,4 @@ DOCX and `data` for CSV.
 - Changing the shape of `classify --json` edits this record.
 
 Satisfies: [issue #1](https://github.com/driftsys/tblctl/issues/1) Related:
-AD-0003
+AD-0003, AD-0005

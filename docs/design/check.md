@@ -2,8 +2,9 @@
 
 As-built description of the T1 size check. Decisions that bind it are in
 [AD-0001](../decisions/0001-check-output-and-exit-codes.md),
-[AD-0003](../decisions/0003-command-flags.md) and
-[AD-0004](../decisions/0004-thresholds-as-flags.md).
+[AD-0003](../decisions/0003-command-flags.md),
+[AD-0004](../decisions/0004-thresholds-as-flags.md) and
+[AD-0005](../decisions/0005-json-envelope-and-human-output.md).
 
 ## Components
 
@@ -47,17 +48,22 @@ A table fails when rows, columns or the longest cell exceed `--max-rows`,
 ## Output
 
 Text: one line per table, as in AD-0001, with the detail `rows×columns` and, on
-failure, the reasons followed by `suggest CSV`.
+failure, the reasons followed by `suggest CSV`. A last line gives the totals:
+`N tables: P passed, F failed` (`0 tables: 0 passed, 0 failed` when there is no
+table). `PASS` is green and `FAIL` red when stdout is a terminal or
+`CLICOLOR_FORCE` is set, and never when `NO_COLOR` is set (`src/output.rs`).
 
-`--json` prints a pretty-printed array with one object per table, in input order
-then document order. Fields: `file`, `line`, `status` (`pass` or `fail`), `rule`
-(`t1`), `rows`, `columns`, `reasons`.
+`--json` prints the envelope of AD-0005 with schema `tblctl/check/v1`. `results`
+has one object per table, in input order then document order. Fields: `file`,
+`line`, `status` (`pass` or `fail`), `rule` (`t1`), `rows`, `columns`,
+`reasons`. `summary` is `{tables, pass, fail}`. A file that cannot be read adds
+an error with code `read_failed` to `errors`.
 
 ## Exit code
 
-2 if any file cannot be read (the error goes to stderr and the other files are
-still checked); otherwise 1 if any table failed; otherwise 0. A closed stdout is
-not an error.
+2 if any file cannot be read (the error goes to stderr, and with `--json` also
+to `errors`; the other files are still checked); otherwise 1 if any table
+failed; otherwise 0. A closed stdout is not an error.
 
 ## Not built
 

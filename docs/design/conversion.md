@@ -1,7 +1,8 @@
 # Design: `classify`, `import` and `export`
 
 As built. Code: `src/read.rs`, `src/rules.rs`, `src/write.rs`,
-`src/commands.rs`.
+`src/commands.rs`, `src/error.rs`, `src/output.rs`. Output format:
+[AD-0005](../decisions/0005-json-envelope-and-human-output.md).
 
 ## Table model
 
@@ -66,24 +67,45 @@ T2; no reader extracts colour yet.
 ## Commands
 
 - `classify <file…> [--json]` prints one line per table
-  (`T2  csv      a.xlsx#Sheet1  40×2  rows 40 > 30`) or the JSON array of
-  AD-0002. Exit 2 if a file cannot be read, otherwise 0.
-- `import <file> [--sheet NAME] --out PATH` classifies the selected table and
-  writes a Markdown table (T1), CSV (T2) or a one-line link stub (T3). `--out`
-  must end in `.md` (T1, T3) or `.csv` (T2). T0 writes nothing and exits 0. In a
-  Markdown table, a line break becomes `<br>` and the characters
+  (`T2  csv      a.xlsx#Sheet1  40×2  rows 40 > 30`) and a last line
+  `N tables: a T0, b T1, c T2, d T3`. The rule is dim (T0), green (T1, T2) or
+  yellow (T3) when stdout is a terminal or `CLICOLOR_FORCE` is set, and never
+  when `NO_COLOR` is set. With `--json` it prints the envelope of AD-0005
+  (schema `tblctl/classify/v1`, the objects of AD-0002 in `results`, summary
+  `{tables, t0, t1, t2, t3}`). Exit 2 if a file cannot be read, otherwise 0.
+- `import <file> [--sheet NAME] --out PATH [--json]` classifies the selected
+  table and writes a Markdown table (T1), CSV (T2) or a one-line link stub (T3).
+  `--out` must end in `.md` (T1, T3) or `.csv` (T2). T0 writes nothing and
+  exits 0. In a Markdown table, a line break becomes `<br>` and the characters
   ``\ | * _ ` [ ] < > & ~`` get a backslash, so the text renders as written. The
   link destination is relative to the directory of `--out`, with `%` and `#`
   percent-encoded, and wrapped in `<>` when it contains spaces, parentheses, `<`
   or `>` (which are percent-encoded). `[` and `]` in the file and sheet names of
   the label get a backslash. `--sheet` is required when the input holds more
   than one table.
-- `export <md|csv> --out x.xlsx` writes one worksheet per table, named `Table1`,
-  `Table2`, … when there are several. `--out` must end in `.xlsx`. A cell is
-  written as a number only when the number reads back as the same text, so `007`
-  and `1.50` stay text. The creation time is fixed, so the same input gives a
-  byte-identical file.
+- `export <md|csv> --out x.xlsx [--json]` writes one worksheet per table, named
+  `Sheet1` when there is one table and `Table1`, `Table2`, … when there are
+  several. `--out` must end in `.xlsx`. A cell is written as a number only when
+  the number reads back as the same text, so `007` and `1.50` stay text. The
+  creation time is fixed, so the same input gives a byte-identical file.
 - `import` and `export` refuse an `--out` that is the input file.
+- `import` and `export` write their status line
+  (`T1  markdown a.xlsx#S  -> out.md`, `2 table(s) -> out.xlsx`) to stderr;
+  stdout stays empty in text mode. With `--json`, no status line is written and
+  stdout gets the envelope of AD-0005: for `import`, one result
+  `{file, table, rule, target, out, reasons}` (`out` is `null` for T0) and
+  summary `{written}`; for `export`, one result `{table, sheet, rows, columns}`
+  per worksheet and summary `{out, sheets}` (`out` is `null` on error).
+
+## Errors
+
+Operational errors are values of `Error` in `src/error.rs`, one variant per
+code: `read_failed`, `unsupported_type`, `no_table`, `several_tables`,
+`no_such_table`, `wrong_extension`, `same_file`, `write_failed`. The text mode
+message is the `Display` form, written to stderr as `tblctl: <message>`. With
+`--json`, `src/output.rs` also writes each error to the `errors` field of the
+envelope. `classify` and `check` report each unreadable file and continue;
+`import` and `export` stop at the first error.
 
 ## Not built
 
