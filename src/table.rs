@@ -24,8 +24,10 @@ pub struct Facts {
     pub images: bool,
     /// Number of visible sheets in the source workbook (1 for other formats).
     pub visible_sheets: usize,
-    /// Cell length is measured on Markdown source with link URLs removed.
-    pub markdown: bool,
+    /// For a Markdown table, the length of the longest cell as rendered,
+    /// measured on the raw source cells by `markdown::visible_len`. `None`
+    /// for other formats, whose cell length is the number of characters.
+    pub markdown_longest_cell: Option<usize>,
 }
 
 impl Grid {

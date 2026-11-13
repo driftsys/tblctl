@@ -78,10 +78,17 @@ fn unescape_cell(cell: &str) -> String {
 }
 
 /// Converts a parsed Markdown table to a grid. `<br>` becomes a newline and
-/// backslash escapes are removed.
+/// backslash escapes are removed. The longest cell is measured on the raw
+/// source cells, before this unescaping.
 pub fn markdown_grid(file: &str, t: markdown::Table) -> Grid {
     let mut rows = vec![t.header];
     rows.extend(t.rows);
+    let longest = rows
+        .iter()
+        .flatten()
+        .map(|c| markdown::visible_len(c))
+        .max()
+        .unwrap_or(0);
     let rows = rows
         .into_iter()
         .map(|r| r.iter().map(|c| unescape_cell(c)).collect())
@@ -92,7 +99,7 @@ pub fn markdown_grid(file: &str, t: markdown::Table) -> Grid {
         rows,
         facts: Facts {
             visible_sheets: 1,
-            markdown: true,
+            markdown_longest_cell: Some(longest),
             ..Facts::default()
         },
     }
@@ -216,7 +223,7 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
                 formulas,
                 images: any_unmatched_picture || pictures.iter().any(|p| p == name),
                 visible_sheets: visible.len(),
-                markdown: false,
+                markdown_longest_cell: None,
             },
         });
     }

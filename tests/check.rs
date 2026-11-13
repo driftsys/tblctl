@@ -203,3 +203,25 @@ fn a_link_counts_as_its_text_only() {
         .code(0)
         .stdout(contains("\"rule\": \"t1\""));
 }
+
+#[test]
+fn escaped_characters_count_as_rendered() {
+    let dir = tempfile::tempdir().unwrap();
+    let stars = "\\*".repeat(120);
+    let md = write(&dir, "s.md", &format!("| {stars} |\n|---|\n| x |\n"));
+    tblctl().arg("check").arg(&md).assert().code(0);
+}
+
+#[test]
+fn an_escaped_bracket_does_not_open_a_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(&dir, "e.md", "| \\[a](bcdef) |\n|---|\n| x |\n");
+    tblctl()
+        .arg("check")
+        .arg(&md)
+        .arg("--max-cell")
+        .arg("5")
+        .assert()
+        .code(1)
+        .stdout(contains("cell 10 > 5"));
+}

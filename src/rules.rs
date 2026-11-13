@@ -1,6 +1,5 @@
 //! Rules T0 to T3. The first rule that matches wins.
 
-use crate::markdown;
 use crate::table::Grid;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -48,27 +47,19 @@ pub struct Verdict {
     pub reasons: Vec<String>,
 }
 
-/// Number of characters in a cell, as the T1 cell limit counts it.
-pub fn cell_len(grid: &Grid, cell: &str) -> usize {
-    if grid.facts.markdown {
-        markdown::visible_len(cell)
-    } else {
-        cell.chars().count()
-    }
-}
-
 /// Reasons why `grid` is over the T1 size limits; empty if it is within them.
 pub fn size_reasons(grid: &Grid, limits: &Limits) -> Vec<String> {
     let mut reasons = Vec::new();
     let rows = grid.data_rows();
     let columns = grid.columns();
-    let longest = grid
-        .rows
-        .iter()
-        .flatten()
-        .map(|c| cell_len(grid, c))
-        .max()
-        .unwrap_or(0);
+    let longest = grid.facts.markdown_longest_cell.unwrap_or_else(|| {
+        grid.rows
+            .iter()
+            .flatten()
+            .map(|c| c.chars().count())
+            .max()
+            .unwrap_or(0)
+    });
     if rows > limits.max_rows {
         reasons.push(format!("rows {rows} > {}", limits.max_rows));
     }

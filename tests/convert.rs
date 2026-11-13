@@ -695,3 +695,24 @@ fn imported_text_renders_literally_and_round_trips() {
         Some(&calamine::Data::String("<value>".into()))
     );
 }
+
+#[test]
+fn csv_cell_of_120_escaped_stars_imports_and_passes_check() {
+    let d = tempfile::tempdir().unwrap();
+    let csv = d.path().join("s.csv");
+    std::fs::write(&csv, format!("h\n{}\n", "*".repeat(120))).unwrap();
+    let out = d.path().join("s.md");
+    tblctl()
+        .arg("import")
+        .arg(&csv)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0);
+    assert!(std::fs::read_to_string(&out)
+        .unwrap()
+        .contains(&"\\*".repeat(120)));
+    let v = classify_json(std::slice::from_ref(&out));
+    assert_eq!(v[0]["rule"], "t1", "{v}");
+    tblctl().arg("check").arg(&out).assert().code(0);
+}

@@ -102,18 +102,30 @@ fn unquote(line: &str) -> (usize, &str) {
     (depth, rest)
 }
 
-/// Number of characters in a cell's Markdown source, with each link or
-/// image `[text](url)` counted as `text` only. Text inside a code span and
-/// a backslash escape are counted as written.
+/// Number of characters in a cell as rendered, measured on the raw Markdown
+/// source of the cell. A backslash before ASCII punctuation counts as 1
+/// character, and the escaped character does not open a link. Each `<br>`,
+/// `<br/>` or `<br />` (any case) counts as 1 character. A link or image
+/// `[text](url)` counts as `text` only. Text inside a code span counts as
+/// written, backslashes included.
 pub fn visible_len(cell: &str) -> usize {
     let mut n = 0;
     let mut rest = cell;
     while let Some(c) = rest.chars().next() {
-        if c == '\\' {
-            let len = 1 + rest[1..].chars().next().map_or(0, char::len_utf8);
-            n += rest[..len].chars().count();
-            rest = &rest[len..];
+        if c == '\\' && rest[1..].starts_with(|x: char| x.is_ascii_punctuation()) {
+            n += 1;
+            rest = &rest[2..];
             continue;
+        }
+        if c == '<' {
+            if let Some(end) = rest.find('>') {
+                let tag = rest[..=end].to_ascii_lowercase().replace(' ', "");
+                if tag == "<br>" || tag == "<br/>" {
+                    n += 1;
+                    rest = &rest[end + 1..];
+                    continue;
+                }
+            }
         }
         if c == '`' {
             let run = rest.chars().take_while(|x| *x == '`').count();
@@ -380,8 +392,28 @@ mod tests {
     fn visible_len_counts_code_spans_and_escaped_brackets_literally() {
         assert_eq!(visible_len("`[a](bcdef)`"), 12);
         assert_eq!(visible_len("``x`[a](b)``"), 12);
-        assert_eq!(visible_len("\\[a](bcdef)"), 11);
+        assert_eq!(visible_len("\\[a](bcdef)"), 10);
         assert_eq!(visible_len("`open [a](b)"), 7);
+    }
+
+    #[test]
+    fn visible_len_counts_a_backslash_escape_as_one_character() {
+        assert_eq!(visible_len(&"\\*".repeat(120)), 120);
+        assert_eq!(visible_len("`a\\*b`"), 6);
+        assert_eq!(visible_len("\\é"), 2);
+        assert_eq!(visible_len("a\\"), 2);
+    }
+
+    #[test]
+    fn visible_len_counts_a_br_tag_as_one_character() {
+        assert_eq!(visible_len("a<br>b<BR/>c<br />d"), 7);
+        assert_eq!(visible_len("`<br>`"), 6);
+        assert_eq!(visible_len("a<b>"), 4);
+    }
+
+    #[test]
+    fn skips_multi_line_html_comments() {
+        assert!(tables("<!--\nnote\n| a |\n|---|\n-->\n").is_empty());
     }
 
     #[test]

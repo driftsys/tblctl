@@ -32,11 +32,13 @@ As-built description of the T1 size check. Decisions that bind it are in
 
 - Rows: data rows only. The header and the delimiter row are not counted.
 - Columns: the number of header cells.
-- Cell length: characters of the trimmed Markdown source, header included. A
-  link or image `[text](url)` counts as `text` only, and each `<br>` counts as
-  one character (a line break). An escaped pipe `\|` counts as 1 character. Text
-  inside a code span and a backslash escape such as `\[` are counted as written,
-  so a link inside them is not reduced to its text.
+- Cell length: characters of the cell as rendered, header included, measured on
+  the trimmed raw Markdown source. A backslash before ASCII punctuation, such as
+  `\*`, `\[` or `\|`, counts as 1 character, and an escaped `\[` does not open a
+  link: `\[a](bcdef)` counts 10. A link or image `[text](url)` counts as `text`
+  only, and each `<br>` counts as one character (a line break). Text inside a
+  code span counts as written, backslashes included, so a link inside it is not
+  reduced to its text.
 
 A table fails when rows, columns or the longest cell exceed `--max-rows`,
 `--max-cols` or `--max-cell`. Each exceeded limit adds one reason, such as
