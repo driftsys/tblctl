@@ -273,6 +273,39 @@ fn export_of_one_table_names_its_sheet_sheet1() {
     let (code, v, _) = run(&[p("export"), p("--json"), &a, p("--out"), &out]);
     assert_eq!(code, 0);
     assert_eq!(v["results"][0]["sheet"], "Sheet1");
+    use calamine::Reader;
+    let wb = calamine::open_workbook_auto(&out).unwrap();
+    assert_eq!(wb.sheet_names(), vec!["Sheet1".to_string()]);
+}
+
+#[test]
+fn classify_prints_the_summary_with_one_read_error_and_one_readable_file() {
+    let d = tempfile::tempdir().unwrap();
+    let a = md(&d, "a.md", SMALL);
+    let out = tblctl()
+        .arg("classify")
+        .arg(d.path().join("missing.md"))
+        .arg(&a)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        text.ends_with("1 table: 0 T0, 1 T1, 0 T2, 0 T3\n"),
+        "{text}"
+    );
+}
+
+#[test]
+fn classify_of_a_file_without_a_table_prints_a_zero_summary() {
+    let d = tempfile::tempdir().unwrap();
+    let a = md(&d, "a.md", "just text\n");
+    tblctl()
+        .arg("classify")
+        .arg(&a)
+        .assert()
+        .code(0)
+        .stdout("0 tables: 0 T0, 0 T1, 0 T2, 0 T3\n");
 }
 
 #[test]

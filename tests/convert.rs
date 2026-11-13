@@ -877,26 +877,40 @@ fn import_and_export_do_not_panic_when_stderr_is_closed() {
     let d = tempfile::tempdir().unwrap();
     let md = d.path().join("a.md");
     std::fs::write(&md, "| a |\n|---|\n| 1 |\n").unwrap();
+    // A revision history is T0: import writes nothing and prints the
+    // "nothing written" status line.
+    let rev = d.path().join("rev.csv");
+    std::fs::write(&rev, "Version,Date,Author\n1,2020-01-01,me\n").unwrap();
+    let path = |name: &str| d.path().join(name).display().to_string();
     for args in [
         vec![
             "import".to_string(),
             md.display().to_string(),
             "--out".into(),
-            d.path().join("b.md").display().to_string(),
+            path("b.md"),
+        ],
+        vec![
+            "import".to_string(),
+            rev.display().to_string(),
+            "--out".into(),
+            path("rev.md"),
         ],
         vec![
             "export".to_string(),
             md.display().to_string(),
             "--out".into(),
-            d.path().join("b.xlsx").display().to_string(),
+            path("b.xlsx"),
         ],
     ] {
-        let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
+        // The read end is dropped before the child starts, so every write to
+        // stderr fails.
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let status = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
             .args(&args)
-            .stderr(std::process::Stdio::piped())
-            .spawn()
+            .stderr(writer)
+            .status()
             .unwrap();
-        drop(child.stderr.take());
-        assert_eq!(child.wait().unwrap().code(), Some(0), "{args:?}");
+        assert_eq!(status.code(), Some(0), "{args:?}");
     }
 }

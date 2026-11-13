@@ -131,6 +131,19 @@ fn unreadable_file_exits_2_and_still_checks_the_rest() {
 }
 
 #[test]
+fn summary_is_printed_when_one_file_is_read_and_one_is_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = write(&dir, "a.md", &table(1, 1, "x"));
+    tblctl()
+        .arg("check")
+        .arg(dir.path().join("missing.md"))
+        .arg(&a)
+        .assert()
+        .code(2)
+        .stdout(contains("1 table: 1 passed, 0 failed\n"));
+}
+
+#[test]
 fn json_results_hold_one_object_per_table() {
     let dir = tempfile::tempdir().unwrap();
     let md = write(
@@ -303,16 +316,16 @@ fn missing_workbook_error_does_not_repeat_the_cause() {
 #[test]
 fn closed_stderr_does_not_panic_and_the_envelope_is_written() {
     let dir = tempfile::tempdir().unwrap();
+    // The read end is dropped before the child starts, so every write to
+    // stderr fails.
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
     let out = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
         .args(["classify", "--json"])
         .arg(dir.path().join("missing.md"))
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map(|mut child| {
-            drop(child.stderr.take());
-            child.wait_with_output().unwrap()
-        })
+        .stderr(writer)
+        .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
