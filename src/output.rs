@@ -30,7 +30,7 @@ pub fn emit(text: &str) -> anyhow::Result<()> {
 /// Writes `line` to stderr. A write error (for example a closed stderr) is
 /// ignored, so that the envelope is still written and the exit code still
 /// reports the result.
-fn stderr_line(line: &str) {
+pub fn stderr_line(line: &str) {
     let _ = writeln!(std::io::stderr(), "{line}");
 }
 

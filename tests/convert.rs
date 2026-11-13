@@ -871,3 +871,32 @@ fn classify_text_ends_with_a_summary_and_colours_the_rule_on_demand() {
     assert!(text.contains("\x1b[32mT2\x1b[0m  csv "), "{text:?}");
     assert!(text.contains("\x1b[33mT3\x1b[0m  link "), "{text:?}");
 }
+
+#[test]
+fn import_and_export_do_not_panic_when_stderr_is_closed() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "| a |\n|---|\n| 1 |\n").unwrap();
+    for args in [
+        vec![
+            "import".to_string(),
+            md.display().to_string(),
+            "--out".into(),
+            d.path().join("b.md").display().to_string(),
+        ],
+        vec![
+            "export".to_string(),
+            md.display().to_string(),
+            "--out".into(),
+            d.path().join("b.xlsx").display().to_string(),
+        ],
+    ] {
+        let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
+            .args(&args)
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        drop(child.stderr.take());
+        assert_eq!(child.wait().unwrap().code(), Some(0), "{args:?}");
+    }
+}

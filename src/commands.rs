@@ -166,8 +166,11 @@ pub fn import(file: &Path, sheet: Option<&str>, out: &Path, limits: &Limits, jso
                     i.table
                 );
                 match &i.out {
-                    Some(path) => eprintln!("{status}  -> {path}"),
-                    None => eprintln!("{status}  {}; nothing written", i.reasons.join(", ")),
+                    Some(path) => crate::output::stderr_line(&format!("{status}  -> {path}")),
+                    None => crate::output::stderr_line(&format!(
+                        "{status}  {}; nothing written",
+                        i.reasons.join(", ")
+                    )),
                 }
             }
             (vec![i], vec![])
@@ -264,7 +267,11 @@ pub fn export(file: &Path, out: &Path, json: bool) -> i32 {
     let (results, errors) = match export_tables(file, out) {
         Ok(grids) => {
             if !json {
-                eprintln!("{} table(s) -> {}", grids.len(), out.display());
+                crate::output::stderr_line(&format!(
+                    "{} table(s) -> {}",
+                    grids.len(),
+                    out.display()
+                ));
             }
             let results: Vec<Exported> = grids
                 .iter()
