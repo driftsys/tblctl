@@ -914,3 +914,92 @@ fn import_and_export_do_not_panic_when_stderr_is_closed() {
         assert_eq!(status.code(), Some(0), "{args:?}");
     }
 }
+
+#[test]
+fn import_as_forces_the_format_and_keeps_the_rule() {
+    let d = tempfile::tempdir().unwrap();
+    let large = d.path().join("large.xlsx");
+    xlsx(&large, &[("L", rows(40))], |_| {});
+    let md = d.path().join("large.md");
+    let out = tblctl()
+        .arg("import")
+        .arg(&large)
+        .args(["--as", "md", "--json"])
+        .arg("--out")
+        .arg(&md)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["results"][0]["rule"], "t2");
+    assert_eq!(v["results"][0]["target"], "markdown");
+    let reasons = v["results"][0]["reasons"].as_array().unwrap();
+    assert_eq!(reasons.last().unwrap(), "target forced by --as");
+    let text = std::fs::read_to_string(&md).unwrap();
+    assert!(text.starts_with("| id | name |\n"));
+    assert_eq!(text.lines().count(), 42);
+}
+
+#[test]
+fn import_as_checks_the_extension_of_the_forced_format() {
+    let d = tempfile::tempdir().unwrap();
+    let small = d.path().join("small.xlsx");
+    xlsx(&small, &[("S", rows(1))], |_| {});
+    let wrong = d.path().join("small.md");
+    tblctl()
+        .arg("import")
+        .arg(&small)
+        .args(["--as", "csv"])
+        .arg("--out")
+        .arg(&wrong)
+        .assert()
+        .code(2)
+        .stderr(contains("--as csv"))
+        .stderr(contains(".csv"));
+    assert!(!wrong.exists());
+    let csv = d.path().join("small.csv");
+    tblctl()
+        .arg("import")
+        .arg(&small)
+        .args(["--as", "csv"])
+        .arg("--out")
+        .arg(&csv)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&csv).unwrap(),
+        "id,name\n0,item 0\n"
+    );
+    let stub = d.path().join("link.md");
+    tblctl()
+        .arg("import")
+        .arg(&small)
+        .args(["--as", "link"])
+        .arg("--out")
+        .arg(&stub)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&stub).unwrap(),
+        "[small.xlsx — S, 1 rows × 2 columns](small.xlsx)\n"
+    );
+}
+
+#[test]
+fn import_as_writes_a_t0_table() {
+    let d = tempfile::tempdir().unwrap();
+    let hist = d.path().join("h.csv");
+    std::fs::write(&hist, "Version,Date,Author\n1,2024-01-01,A\n").unwrap();
+    let md = d.path().join("h.md");
+    tblctl()
+        .arg("import")
+        .arg(&hist)
+        .args(["--as", "md"])
+        .arg("--out")
+        .arg(&md)
+        .assert()
+        .code(0);
+    assert!(std::fs::read_to_string(&md)
+        .unwrap()
+        .starts_with("| Version | Date | Author |"));
+}

@@ -33,9 +33,21 @@ fn main() {
             file,
             sheet,
             out,
+            as_format,
             json,
             limits: l,
-        } => commands::import(&file, sheet.as_deref(), &out, &limits(l), json),
+        } => commands::import(
+            &file,
+            sheet.as_deref(),
+            &out,
+            as_format.map(|f| match f {
+                cli::AsFormat::Md => rules::Target::Markdown,
+                cli::AsFormat::Csv => rules::Target::Csv,
+                cli::AsFormat::Link => rules::Target::Link,
+            }),
+            &limits(l),
+            json,
+        ),
         Command::Check {
             files,
             json,

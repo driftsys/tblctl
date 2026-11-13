@@ -153,9 +153,17 @@ struct Imported {
     reasons: Vec<String>,
 }
 
-/// Imports one table from `file` in the format its rule selects.
-pub fn import(file: &Path, sheet: Option<&str>, out: &Path, limits: &Limits, json: bool) -> i32 {
-    let (results, errors) = match import_table(file, sheet, out, limits) {
+/// Imports one table from `file` in the format its rule selects, or in
+/// `forced` when `--as` is given.
+pub fn import(
+    file: &Path,
+    sheet: Option<&str>,
+    out: &Path,
+    forced: Option<Target>,
+    limits: &Limits,
+    json: bool,
+) -> i32 {
+    let (results, errors) = match import_table(file, sheet, out, forced, limits) {
         Ok(i) => {
             if !json {
                 let status = format!(
@@ -193,6 +201,7 @@ fn import_table(
     file: &Path,
     sheet: Option<&str>,
     out: &Path,
+    forced: Option<Target>,
     limits: &Limits,
 ) -> Result<Imported, Error> {
     let out_name = out.display().to_string();
@@ -204,14 +213,18 @@ fn import_table(
     let verdict = rules::classify(std::slice::from_ref(&grid), limits)
         .pop()
         .expect("one verdict per grid");
-    let target = verdict.rule.target();
+    let target = forced.unwrap_or(verdict.rule.target());
+    let mut reasons = verdict.reasons;
+    if forced.is_some() {
+        reasons.push("target forced by --as".to_string());
+    }
     let mut imported = Imported {
         file: grid.file.clone(),
         table: grid.name.clone(),
         rule: verdict.rule,
         target,
         out: None,
-        reasons: verdict.reasons,
+        reasons,
     };
     if target == Target::Skip {
         return Ok(imported);
@@ -219,10 +232,15 @@ fn import_table(
     let expected = if target == Target::Csv { "csv" } else { "md" };
     let ext = out.extension().and_then(|e| e.to_str()).unwrap_or("");
     if !ext.eq_ignore_ascii_case(expected) {
+        let by = match forced {
+            Some(Target::Csv) => "--as csv".to_string(),
+            Some(Target::Link) => "--as link".to_string(),
+            Some(_) => "--as md".to_string(),
+            None => format!("rule {}", rule_label(verdict.rule)),
+        };
         return Err(Error::WrongExtension {
             message: format!(
-                "{out_name}: rule {} writes {}; use an --out path ending in .{expected}",
-                rule_label(verdict.rule),
+                "{out_name}: {by} writes {}; use an --out path ending in .{expected}",
                 target_label(target)
             ),
             file: out_name,
