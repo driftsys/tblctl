@@ -716,3 +716,110 @@ fn csv_cell_of_120_escaped_stars_imports_and_passes_check() {
     assert_eq!(v[0]["rule"], "t1", "{v}");
     tblctl().arg("check").arg(&out).assert().code(0);
 }
+
+#[test]
+fn docx_tab_stop_in_a_later_paragraph_adds_no_tab() {
+    let d = tempfile::tempdir().unwrap();
+    let doc = d.path().join("t.docx");
+    docx(
+        &doc,
+        "<w:tbl>\
+         <w:tr><w:tc><w:p><w:r><w:t>k</w:t></w:r></w:p></w:tc></w:tr>\
+         <w:tr><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p><w:p><w:pPr><w:tabs><w:tab w:val=\"left\" w:pos=\"720\"/></w:tabs></w:pPr><w:r><w:t>2</w:t></w:r></w:p></w:tc></w:tr>\
+         </w:tbl>",
+    );
+    let out = d.path().join("t.md");
+    tblctl()
+        .arg("import")
+        .arg(&doc)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        "| k |\n|---|\n| 1<br>2 |\n"
+    );
+}
+
+#[test]
+fn ods_merges_land_on_the_right_cells_when_data_does_not_start_at_a1() {
+    let d = tempfile::tempdir().unwrap();
+    let f = d.path().join("o.ods");
+    let pad = r#"<table:table-cell table:number-columns-repeated="2"/>"#;
+    let covered = "<table:covered-table-cell/>";
+    ods(
+        &f,
+        &format!(
+            r#"<table:table table:name="S"><table:table-row/><table:table-row table:number-rows-repeated="2"><table:table-cell table:number-columns-repeated="6"/></table:table-row><table:table-row>{pad}{}{covered}{}{covered}</table:table-row><table:table-row>{pad}{}{}{}{}</table:table-row></table:table>"#,
+            ods_cell("A", r#"table:number-columns-spanned="2""#),
+            ods_cell("B", r#"table:number-columns-spanned="2""#),
+            ods_cell("1", ""),
+            ods_cell("2", ""),
+            ods_cell("3", ""),
+            ods_cell("4", ""),
+        ),
+    );
+    let v = classify_json(std::slice::from_ref(&f));
+    assert_eq!(v[0]["rule"], "t1", "{v}");
+    let out = d.path().join("o.md");
+    tblctl()
+        .arg("import")
+        .arg(&f)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        "| A | A | B | B |\n|---|---|---|---|\n| 1 | 2 | 3 | 4 |\n"
+    );
+}
+
+#[test]
+fn ods_merges_of_a_second_sheet_with_an_escaped_name_are_found() {
+    let d = tempfile::tempdir().unwrap();
+    let f = d.path().join("two.ods");
+    let pad = r#"<table:table-cell table:number-columns-repeated="1"/>"#;
+    let covered = r#"<table:covered-table-cell table:number-columns-repeated="1"/>"#;
+    let first = format!(
+        r#"<table:table table:name="First"><table:table-row>{}</table:table-row><table:table-row table:number-rows-repeated="5">{}</table:table-row></table:table>"#,
+        ods_cell("k", ""),
+        ods_cell("1", ""),
+    );
+    let second = format!(
+        r#"<table:table table:name="R&amp;D"><table:table-row/><table:table-row>{pad}{}{}</table:table-row><table:table-row>{pad}{}{}</table:table-row><table:table-row>{pad}{covered}{}</table:table-row></table:table>"#,
+        ods_cell("k", ""),
+        ods_cell("v", ""),
+        ods_cell("m", r#"table:number-rows-spanned="2""#),
+        ods_cell("1", ""),
+        ods_cell("2", ""),
+    );
+    ods(&f, &format!("{first}{second}"));
+    let v = classify_json(std::slice::from_ref(&f));
+    assert_eq!(v[1]["table"], "R&D", "{v}");
+    assert_eq!(v[1]["rule"], "t3", "{v}");
+    assert!(
+        v[1]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&"merged data cells".into()),
+        "{v}"
+    );
+}
+
+#[test]
+fn export_accepts_an_uppercase_xlsx_extension() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "| a |\n|---|\n| 1 |\n").unwrap();
+    let out = d.path().join("A.XLSX");
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0);
+    assert!(out.exists());
+}

@@ -298,7 +298,11 @@ mod ods {
                             .attributes()
                             .flatten()
                             .find(|a| a.key.as_ref() == "table:name")
-                            .map(|a| a.value.into_owned())
+                            .map(|a| {
+                                let raw = a.value.into_owned();
+                                quick_xml::escape::unescape(&raw)
+                                    .map_or_else(|_| raw.clone(), |v| v.into_owned())
+                            })
                             .unwrap_or_default();
                         row = 0;
                     }
