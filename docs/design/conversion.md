@@ -59,7 +59,8 @@ First match wins (`src/rules.rs`):
 
 For T0, `reasons` says why the table is skipped (`empty`, `duplicate of …`,
 `revision history`). For T2 and T3, it lists why the table did not get an
-earlier rule.
+earlier rule. With `import --as`, `reasons` also ends with
+`target forced by --as`.
 
 Not detected: whether cell colour carries meaning. Issue #1 lists it for T1 and
 T2; no reader extracts colour yet.
@@ -79,13 +80,14 @@ T2; no reader extracts colour yet.
   one-line link stub (T3). `--as` writes the given format instead; the result
   keeps the computed rule and adds the reason `target forced by --as`. `--out`
   must end in `.md` (Markdown, link) or `.csv` (CSV). Without `--as`, T0 writes
-  nothing and exits 0; with `--as`, a T0 table is written. In a Markdown table,
-  a line break becomes `<br>` and the characters ``\ | * _ ` [ ] < > & ~`` get a
-  backslash, so the text renders as written. The link destination is relative to
-  the directory of `--out`, with `%` and `#` percent-encoded, and wrapped in
-  `<>` when it contains spaces, parentheses, `<` or `>` (which are
-  percent-encoded). `[` and `]` in the file and sheet names of the label get a
-  backslash. `--sheet` is required when the input holds more than one table.
+  nothing and exits 0; with `--as`, a T0 table is written, except an empty
+  table, which is never written. In a Markdown table, a line break becomes
+  `<br>` and the characters ``\ | * _ ` [ ] < > & ~`` get a backslash, so the
+  text renders as written. The link destination is relative to the directory of
+  `--out`, with `%` and `#` percent-encoded, and wrapped in `<>` when it
+  contains spaces, parentheses, `<` or `>` (which are percent-encoded). `[` and
+  `]` in the file and sheet names of the label get a backslash. `--sheet` is
+  required when the input holds more than one table.
 - `export <md|csv> --out x.xlsx [--json]` writes one worksheet per table, named
   `Sheet1` when there is one table and `Table1`, `Table2`, … when there are
   several. `--out` must end in `.xlsx`. A cell is written as a number only when
@@ -96,9 +98,10 @@ T2; no reader extracts colour yet.
   (`T1  markdown a.xlsx#S  -> out.md`, `2 table(s) -> out.xlsx`) to stderr;
   stdout stays empty in text mode. With `--json`, no status line is written and
   stdout gets the envelope of AD-0005: for `import`, one result
-  `{file, table, rule, target, out, reasons}` (`out` is `null` for T0) and
-  summary `{written}`; for `export`, one result `{table, sheet, rows, columns}`
-  per worksheet and summary `{out, sheets}` (`out` is `null` on error).
+  `{file, table, rule, target, out, reasons}` (`out` is `null` when nothing is
+  written) and summary `{written}`; for `export`, one result
+  `{table, sheet, rows, columns}` per worksheet and summary `{out, sheets}`
+  (`out` is `null` on error).
 
 ## Errors
 

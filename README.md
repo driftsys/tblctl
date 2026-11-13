@@ -151,12 +151,12 @@ tblctl classify --json spec.md missing.xlsx
 }
 ```
 
-| Command    | `results`, one object per                                                           | `summary`                         |
-| ---------- | ----------------------------------------------------------------------------------- | --------------------------------- |
-| `classify` | table: `file`, `table`, `rule`, `target`, `rows`, `columns`, `reasons`              | `tables`, `t0`, `t1`, `t2`, `t3`  |
-| `check`    | table: `file`, `line`, `status`, `rule`, `rows`, `columns`, `reasons`               | `tables`, `pass`, `fail`          |
-| `import`   | imported table: `file`, `table`, `rule`, `target`, `out` (`null` for T0), `reasons` | `written` (0 or 1)                |
-| `export`   | worksheet: `table`, `sheet`, `rows`, `columns`                                      | `out` (`null` on error), `sheets` |
+| Command    | `results`, one object per                                                                   | `summary`                         |
+| ---------- | ------------------------------------------------------------------------------------------- | --------------------------------- |
+| `classify` | table: `file`, `table`, `rule`, `target`, `rows`, `columns`, `reasons`                      | `tables`, `t0`, `t1`, `t2`, `t3`  |
+| `check`    | table: `file`, `line`, `status`, `rule`, `rows`, `columns`, `reasons`                       | `tables`, `pass`, `fail`          |
+| `import`   | imported table: `file`, `table`, `rule`, `target`, `out` (`null` if not written), `reasons` | `written` (0 or 1)                |
+| `export`   | worksheet: `table`, `sheet`, `rows`, `columns`                                              | `out` (`null` on error), `sheets` |
 
 Each error has `code`, `message`, `file`, a `hint` when there is one, and the
 fields of its code. Codes: `read_failed`, `unsupported_type`, `no_table`,

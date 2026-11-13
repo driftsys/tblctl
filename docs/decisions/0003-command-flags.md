@@ -7,10 +7,12 @@ to T3 already choose the output format for an imported table.
 
 ## Options
 
-- `--target md|csv|link` on `import` from the start. Deferred: the rules already
-  choose the format. An override such as `import --as md|csv|link` can be added
-  if a need appears.
-- No `--target`; rules decide. Chosen.
+- `--target md|csv|link` on `import` from the start. Rejected: the rules already
+  choose the format by default.
+- No override flag; rules always decide. Rejected: a table that the rules send
+  to CSV could not be put into Markdown.
+- `--as md|csv|link` on `import`, as an explicit override of the rule for one
+  table. Chosen.
 
 ## Decision
 
@@ -21,11 +23,12 @@ to T3 already choose the output format for an imported table.
 - `--strict` is available on `check` only. It turns `REVIEW` into exit 1.
 - Commands that report results accept many input files.
 - There is no `--target` flag. The rules T0 to T3 choose the output format.
-- `import --as md|csv|link` overrides that choice for one table (added
-  2026-11-13 at the user's request, to put for example a 40-row table into
-  Markdown). Without `--as`, the rule decides. With `--as`, the result keeps the
-  computed `rule`, `target` is the forced format, `reasons` ends with
-  `target forced by --as`, and a T0 table is written too.
+- `import --as md|csv|link` overrides that choice for one table (needed to put a
+  table that the rule sends to CSV, for example a 40-row table, into Markdown).
+  Without `--as`, the rule decides. With `--as`, the result keeps the computed
+  `rule`, `target` is the forced format, `reasons` ends with
+  `target forced by --as`, and a T0 table is written too, except an empty table,
+  which is never written.
 
 `import` and `export` convert one file, so they take a single input.
 `import --sheet` selects one table when the input has several.
