@@ -26,7 +26,10 @@ cells, formulas, images, number of visible sheets).
   to it, so a merge never widens the table. Merges are read for XLSX and XLS
   through `calamine`, and for ODS from `content.xml`
   (`table:number-rows-spanned`, `table:number-columns-spanned`). The XLSB reader
-  does not expose merges, so XLSB merges are not detected.
+  does not expose merges, so XLSB merges are not detected. Because merged data
+  cells cannot be ruled out, every XLSB table gets the reason
+  `merged cells
+  unknown (XLSB)` and is T3.
 - Images are detected for XLSX only. `calamine` does not expose images in XLS,
   XLSB or ODS files, so a table with images in those formats is not marked.
 - Dates are written as `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM:SS` when the time is
@@ -86,6 +89,7 @@ T2; no reader extracts colour yet.
 
 - Colour detection (see Rules).
 - OCR of table pictures (out of scope for v0.1).
-- Merges in XLSB files, and images in XLS, XLSB and ODS files (see Readers).
+- Merges in XLSB files (XLSB tables are T3), and images in XLS, XLSB and ODS
+  files (see Readers).
 - A link stub for a source on another Windows drive than `--out`: the relative
   path is not valid.

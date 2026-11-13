@@ -84,8 +84,11 @@ results into failures once a check can report `REVIEW`.
 `export` writes each table of a Markdown or CSV file to one sheet of an XLSX
 file. The output is byte-identical for the same input.
 
-Merged data cells are detected in XLSX, XLS, ODS and DOCX, not in XLSB. Images
-are detected in XLSX and DOCX, not in XLS, XLSB or ODS.
+Merged data cells are detected in XLSX, XLS, ODS and DOCX. They cannot be read
+from XLSB, so every XLSB table is T3 (link) with the reason
+`merged cells
+unknown (XLSB)`. Images are detected in XLSX and DOCX, not in XLS,
+XLSB or ODS.
 
 The T1 limits are 30 data rows, 8 columns and 120 characters per cell. In
 Markdown, a link counts as its text only. `--max-rows`, `--max-cols` and

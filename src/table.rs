@@ -18,6 +18,9 @@ pub struct Grid {
 pub struct Facts {
     /// A merged range touches a row after the header.
     pub data_merges: bool,
+    /// The reader cannot see merged ranges (XLSB), so merged data cells
+    /// cannot be ruled out.
+    pub merges_unknown: bool,
     /// At least one cell holds a formula.
     pub formulas: bool,
     /// The table or sheet holds an image.

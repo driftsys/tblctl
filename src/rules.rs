@@ -138,6 +138,9 @@ pub fn classify(grids: &[Grid], limits: &Limits) -> Vec<Verdict> {
             if g.facts.data_merges {
                 structure.push("merged data cells".into());
             }
+            if g.facts.merges_unknown {
+                structure.push("merged cells unknown (XLSB)".into());
+            }
             if g.facts.images {
                 structure.push("images".into());
             }
@@ -315,6 +318,7 @@ mod tests {
     fn merged_data_cells_images_or_several_sheets_are_t3() {
         for set in [
             |f: &mut Facts| f.data_merges = true,
+            |f: &mut Facts| f.merges_unknown = true,
             |f: &mut Facts| f.images = true,
             |f: &mut Facts| f.visible_sheets = 2,
         ] {

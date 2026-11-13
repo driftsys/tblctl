@@ -220,6 +220,7 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
             rows,
             facts: Facts {
                 data_merges,
+                merges_unknown: matches!(wb, Sheets::Xlsb(_)),
                 formulas,
                 images: any_unmatched_picture || pictures.iter().any(|p| p == name),
                 visible_sheets: visible.len(),
