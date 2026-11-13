@@ -43,6 +43,12 @@ pub fn link_stub(grid: &Grid, source: &Path, out: &Path) -> Result<String> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| grid.file.clone());
+    let label = label.replace('[', "\\[").replace(']', "\\]");
+    let target = if target.contains([' ', '(', ')', '<', '>']) {
+        format!("<{}>", target.replace('<', "%3C").replace('>', "%3E"))
+    } else {
+        target
+    };
     Ok(format!(
         "[{label} — {}, {} rows × {} columns]({target})\n",
         grid.name,
@@ -90,6 +96,18 @@ fn relative_link(source: &Path, out: &Path) -> Result<String> {
     Ok(parts.join("/"))
 }
 
+/// Returns the number in `cell` if writing it as a number and reading it
+/// back gives the same text (so `007` and `1.50` stay text).
+fn number(cell: &str) -> Option<f64> {
+    let n: f64 = cell.parse().ok()?;
+    let back = if n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n}")
+    };
+    (n.is_finite() && back == cell).then_some(n)
+}
+
 /// Writes each grid as one worksheet of an XLSX file. Output is
 /// deterministic: the document creation time is fixed.
 pub fn xlsx(grids: &[Grid], out: &Path) -> Result<()> {
@@ -104,8 +122,14 @@ pub fn xlsx(grids: &[Grid], out: &Path) -> Result<()> {
         }
         for (r, row) in g.rows.iter().enumerate() {
             for (c, cell) in row.iter().enumerate() {
-                if !cell.is_empty() {
-                    ws.write_string(r as u32, c as u16, cell)?;
+                match number(cell) {
+                    Some(n) => {
+                        ws.write_number(r as u32, c as u16, n)?;
+                    }
+                    None if !cell.is_empty() => {
+                        ws.write_string(r as u32, c as u16, cell)?;
+                    }
+                    None => {}
                 }
             }
         }
@@ -140,6 +164,26 @@ mod tests {
     fn csv_quotes_when_needed() {
         let g = grid(&[&["a", "b"], &["x,y", "z"]]);
         assert_eq!(csv(&g).unwrap(), "a,b\n\"x,y\",z\n");
+    }
+
+    #[test]
+    fn only_canonical_numbers_are_numbers() {
+        assert_eq!(number("12"), Some(12.0));
+        assert_eq!(number("-1.5"), Some(-1.5));
+        assert_eq!(number("007"), None);
+        assert_eq!(number("1.50"), None);
+        assert_eq!(number("NaN"), None);
+        assert_eq!(number(""), None);
+    }
+
+    #[test]
+    fn link_with_spaces_is_wrapped_in_angle_brackets() {
+        let g = grid(&[&["a"], &["1"]]);
+        let s = link_stub(&g, Path::new("/r/Plan (v2).xlsx"), Path::new("/r/t.md")).unwrap();
+        assert_eq!(
+            s,
+            "[Plan (v2).xlsx — Sheet1, 1 rows × 1 columns](<Plan (v2).xlsx>)\n"
+        );
     }
 
     #[test]

@@ -313,3 +313,72 @@ fn export_rejects_workbook_input_and_unreadable_files_exit_2() {
         .code(2)
         .stdout(contains("T1"));
 }
+
+#[test]
+fn dates_import_as_iso_and_formatting_merges_outside_data_are_ignored() {
+    let d = tempfile::tempdir().unwrap();
+    let x = d.path().join("a.xlsx");
+    xlsx(&x, &[], |wb| {
+        let ws = wb.add_worksheet();
+        let date = rust_xlsxwriter::Format::new().set_num_format("yyyy-mm-dd");
+        ws.write_string(0, 1, "when").unwrap();
+        ws.write_string(0, 2, "what").unwrap();
+        let dt = rust_xlsxwriter::ExcelDateTime::from_ymd(2024, 3, 15).unwrap();
+        ws.write_datetime_with_format(1, 1, &dt, &date).unwrap();
+        ws.write_string(1, 2, "x").unwrap();
+        // Empty merged block left of the data (column A): formatting only.
+        ws.merge_range(4, 0, 9, 0, "", &rust_xlsxwriter::Format::new())
+            .unwrap();
+    });
+    let v = classify_json(std::slice::from_ref(&x));
+    assert_eq!(v[0]["rule"], "t1", "{v}");
+    let out = d.path().join("a.md");
+    tblctl()
+        .arg("import")
+        .arg(&x)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0);
+    assert!(std::fs::read_to_string(&out)
+        .unwrap()
+        .contains("| 2024-03-15 | x |"));
+}
+
+#[test]
+fn import_refuses_to_overwrite_its_input() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "# Doc\n\n| a |\n|---|\n| 1 |\n").unwrap();
+    tblctl()
+        .arg("import")
+        .arg(&md)
+        .arg("--out")
+        .arg(&md)
+        .assert()
+        .code(2)
+        .stderr(contains("input file"));
+    assert!(std::fs::read_to_string(&md).unwrap().starts_with("# Doc"));
+}
+
+#[test]
+fn export_writes_canonical_numbers_as_numbers_and_header_br_as_newline() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "| Unit<br/>(ms) | code |\n|---|---|\n| 12 | 007 |\n").unwrap();
+    let x = d.path().join("a.xlsx");
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&x)
+        .assert()
+        .code(0);
+    use calamine::{Data, Reader};
+    let mut wb = calamine::open_workbook_auto(&x).unwrap();
+    let name = wb.sheet_names()[0].clone();
+    let r = wb.worksheet_range(&name).unwrap();
+    assert_eq!(r.get((0, 0)), Some(&Data::String("Unit\n(ms)".into())));
+    assert_eq!(r.get((1, 0)), Some(&Data::Float(12.0)));
+    assert_eq!(r.get((1, 1)), Some(&Data::String("007".into())));
+}

@@ -117,6 +117,9 @@ fn pick(mut grids: Vec<Grid>, sheet: Option<&str>, file: &Path) -> Result<Grid> 
 
 /// Imports one table from `file` in the format its rule selects.
 pub fn import(file: &Path, sheet: Option<&str>, out: &Path, limits: &Limits) -> Result<i32> {
+    if same_file(file, out) {
+        bail!("{}: --out is the input file", out.display());
+    }
     let grids = read::tables(file)?;
     let grid = pick(grids, sheet, file)?;
     let verdict = rules::classify(std::slice::from_ref(&grid), limits)
@@ -158,6 +161,13 @@ pub fn import(file: &Path, sheet: Option<&str>, out: &Path, limits: &Limits) -> 
     Ok(0)
 }
 
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
+}
+
 /// Exports the tables of a Markdown or CSV file to XLSX, one sheet per table.
 pub fn export(file: &Path, out: &Path) -> Result<i32> {
     let ext = file
@@ -167,6 +177,9 @@ pub fn export(file: &Path, out: &Path) -> Result<i32> {
         .to_ascii_lowercase();
     if !matches!(ext.as_str(), "md" | "markdown" | "csv") {
         bail!("{}: export reads Markdown or CSV only", file.display());
+    }
+    if same_file(file, out) {
+        bail!("{}: --out is the input file", out.display());
     }
     let grids = read::tables(file)?;
     if grids.is_empty() {

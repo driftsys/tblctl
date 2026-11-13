@@ -3,7 +3,7 @@
 use crate::markdown;
 use crate::table::{Facts, Grid};
 use anyhow::{bail, Context, Result};
-use calamine::{Data, Dimensions, Reader, SheetVisible, Sheets};
+use calamine::{Data, Dimensions, Reader, SheetType, SheetVisible, Sheets};
 use std::io::Read as _;
 use std::path::Path;
 
@@ -34,25 +34,52 @@ fn markdown_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
     let text = std::fs::read_to_string(path).with_context(|| file.to_string())?;
     Ok(markdown::tables(&text)
         .into_iter()
-        .map(|t| {
-            let mut rows = vec![t.header];
-            rows.extend(t.rows.into_iter().map(|r| {
-                r.into_iter()
-                    .map(|c| c.replace("<br>", "\n").replace("<br/>", "\n"))
-                    .collect()
-            }));
-            Grid {
-                file: file.to_string(),
-                name: format!("line {}", t.line),
-                rows,
-                facts: Facts {
-                    visible_sheets: 1,
-                    markdown: true,
-                    ..Facts::default()
-                },
-            }
-        })
+        .map(|t| markdown_grid(file, t))
         .collect())
+}
+
+/// Replaces each `<br>`, `<br/>` or `<br />` (any case) with a newline.
+fn br_to_newline(cell: &str) -> String {
+    let mut out = String::with_capacity(cell.len());
+    let mut rest = cell;
+    while let Some(i) = rest.find('<') {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        let end = tail.find('>').map(|e| e + 1);
+        let tag = end.map(|e| tail[..e].to_ascii_lowercase().replace(' ', ""));
+        match (end, tag.as_deref()) {
+            (Some(e), Some("<br>" | "<br/>")) => {
+                out.push('\n');
+                rest = &tail[e..];
+            }
+            _ => {
+                out.push('<');
+                rest = &tail[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Converts a parsed Markdown table to a grid. `<br>` becomes a newline.
+pub fn markdown_grid(file: &str, t: markdown::Table) -> Grid {
+    let mut rows = vec![t.header];
+    rows.extend(t.rows);
+    let rows = rows
+        .into_iter()
+        .map(|r| r.iter().map(|c| br_to_newline(c)).collect())
+        .collect();
+    Grid {
+        file: file.to_string(),
+        name: format!("line {}", t.line),
+        rows,
+        facts: Facts {
+            visible_sheets: 1,
+            markdown: true,
+            ..Facts::default()
+        },
+    }
 }
 
 fn csv_table(path: &Path, file: &str) -> Result<Grid> {
@@ -81,6 +108,11 @@ fn cell_text(d: &Data) -> String {
     match d {
         Data::Empty => String::new(),
         Data::Float(f) if f.fract() == 0.0 && f.abs() < 1e15 => format!("{}", *f as i64),
+        Data::DateTime(dt) if !dt.is_duration() => match dt.as_datetime() {
+            Some(t) if t.time() == chrono::NaiveTime::MIN => t.format("%Y-%m-%d").to_string(),
+            Some(t) => t.format("%Y-%m-%d %H:%M:%S").to_string(),
+            None => d.to_string(),
+        },
         other => other.to_string(),
     }
 }
@@ -90,7 +122,7 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
     let visible: Vec<String> = wb
         .sheets_metadata()
         .iter()
-        .filter(|s| s.visible == SheetVisible::Visible)
+        .filter(|s| s.visible == SheetVisible::Visible && s.typ == SheetType::WorkSheet)
         .map(|s| s.name.clone())
         .collect();
     let pictures: Vec<String> = wb
@@ -116,6 +148,10 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
         let merges = merges(&mut wb, name);
         let mut data_merges = false;
         for m in &merges {
+            // A merge outside the used range (formatting only) holds no data.
+            if m.end.0 < r0 || m.end.1 < c0 {
+                continue;
+            }
             let (sr, sc) = (
                 m.start.0.saturating_sub(r0) as usize,
                 m.start.1.saturating_sub(c0) as usize,
@@ -124,7 +160,7 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
                 m.end.0.saturating_sub(r0) as usize,
                 m.end.1.saturating_sub(c0) as usize,
             );
-            if er > 0 {
+            if er > 0 && (sr..=er).any(|r| r > 0) {
                 data_merges = true;
             }
             // Flatten by repeating the top-left value over the merged range.

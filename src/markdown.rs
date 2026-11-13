@@ -74,14 +74,13 @@ pub fn visible_len(cell: &str) -> usize {
     let mut rest = cell;
     while let Some(open) = rest.find('[') {
         let after = &rest[open + 1..];
-        let link = after.find("](").and_then(|close| {
-            after[close + 2..]
-                .find(')')
-                .map(|end| (close, close + 2 + end + 1))
-        });
+        let link = after
+            .find("](")
+            .and_then(|close| url_end(&after[close + 2..]).map(|end| (close, close + 2 + end + 1)));
         match link {
             Some((close, skip)) => {
-                n += rest[..open].trim_end_matches('!').chars().count();
+                let before = &rest[..open];
+                n += before.strip_suffix('!').unwrap_or(before).chars().count();
                 n += after[..close].chars().count();
                 rest = &after[skip..];
             }
@@ -92,6 +91,21 @@ pub fn visible_len(cell: &str) -> usize {
         }
     }
     n + rest.chars().count()
+}
+
+/// Index of the `)` that closes a link destination, allowing balanced
+/// parentheses inside the URL.
+fn url_end(s: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(i),
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn indent(line: &str) -> usize {
@@ -222,6 +236,8 @@ mod tests {
         assert_eq!(visible_len("[spec](https://example.com/a/b/c)"), 4);
         assert_eq!(visible_len("see ![logo](x.png) and [a](b)"), 14);
         assert_eq!(visible_len("[not a link"), 11);
+        assert_eq!(visible_len("Done!! [x](y)"), 8);
+        assert_eq!(visible_len("[w](https://e.org/A_(b))"), 1);
     }
 
     #[test]

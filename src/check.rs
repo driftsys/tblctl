@@ -2,7 +2,6 @@
 
 use crate::markdown::{self, Table};
 use crate::rules::{self, Limits};
-use crate::table::{Facts, Grid};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -26,18 +25,7 @@ struct Report {
 
 fn evaluate(file: &str, table: Table, limits: &Limits) -> Report {
     let line = table.line;
-    let mut rows = vec![table.header];
-    rows.extend(table.rows);
-    let grid = Grid {
-        file: file.to_string(),
-        name: format!("line {line}"),
-        rows,
-        facts: Facts {
-            visible_sheets: 1,
-            markdown: true,
-            ..Facts::default()
-        },
-    };
+    let grid = crate::read::markdown_grid(file, table);
     let reasons = rules::size_reasons(&grid, limits);
     let status = if reasons.is_empty() {
         Status::Pass
