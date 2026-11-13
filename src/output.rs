@@ -27,6 +27,13 @@ pub fn emit(text: &str) -> anyhow::Result<()> {
     }
 }
 
+/// Writes `line` to stderr. A write error (for example a closed stderr) is
+/// ignored, so that the envelope is still written and the exit code still
+/// reports the result.
+fn stderr_line(line: &str) {
+    let _ = writeln!(std::io::stderr(), "{line}");
+}
+
 /// The styles used in text output.
 pub const GREEN: Style = AnsiColor::Green.on_default();
 pub const RED: Style = AnsiColor::Red.on_default();
@@ -56,7 +63,7 @@ pub fn finish(
     failed: bool,
 ) -> i32 {
     for err in errors {
-        eprintln!("tblctl: {err}");
+        stderr_line(&format!("tblctl: {err}"));
     }
     let body = if json {
         let envelope = json!({
@@ -70,7 +77,7 @@ pub fn finish(
         text.to_string()
     };
     if let Err(err) = emit(&body) {
-        eprintln!("tblctl: {err:#}");
+        stderr_line(&format!("tblctl: {err:#}"));
         return 2;
     }
     if !errors.is_empty() {

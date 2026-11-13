@@ -299,3 +299,22 @@ fn missing_workbook_error_does_not_repeat_the_cause() {
         "{err}"
     );
 }
+
+#[test]
+fn closed_stderr_does_not_panic_and_the_envelope_is_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
+        .args(["classify", "--json"])
+        .arg(dir.path().join("missing.md"))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map(|mut child| {
+            drop(child.stderr.take());
+            child.wait_with_output().unwrap()
+        })
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["errors"][0]["code"], "read_failed");
+}
