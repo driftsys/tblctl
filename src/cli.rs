@@ -18,6 +18,14 @@ pub struct Cli {
     pub command: Command,
 }
 
+/// Output format forced with `import --as`.
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum AsFormat {
+    Md,
+    Csv,
+    Link,
+}
+
 /// T1 size limits.
 #[derive(Args)]
 pub struct LimitArgs {
@@ -49,11 +57,12 @@ pub enum Command {
         #[command(flatten)]
         limits: LimitArgs,
     },
-    /// Import a table as Markdown, CSV or a link stub, as its rule selects
+    /// Import a table as Markdown, CSV or a link stub (the rule selects, or --as)
     #[command(after_help = "Examples:
   tblctl import att/limits.xlsx --out docs/limits.md
   tblctl import att/limits.xlsx --sheet Limits --out docs/limits.md
-  tblctl import att/large.xlsx --sheet Data --out docs/data.csv")]
+  tblctl import att/large.xlsx --sheet Data --out docs/data.csv
+  tblctl import att/large.xlsx --as md --out docs/data.md")]
     Import {
         /// Source file: xlsx, xlsm, xls, xlsb, ods, docx, csv, md
         file: PathBuf,
@@ -63,6 +72,9 @@ pub enum Command {
         /// Output path (.md for Markdown or a link stub, .csv for CSV)
         #[arg(long)]
         out: PathBuf,
+        /// Write this format instead of the one the rule selects
+        #[arg(long = "as", value_enum)]
+        as_format: Option<AsFormat>,
         /// Emit JSON
         #[arg(long)]
         json: bool,

@@ -40,7 +40,7 @@ exactly one pretty-printed JSON object to stdout, also when an error occurs:
   `target`, `rows`, `columns`, `reasons`); `check` one object per table (`file`,
   `line`, `status`, `rule`, `rows`, `columns`, `reasons`); `import` one object
   (`file`, `table`, `rule`, `target`, `out`, `reasons`), where `out` is `null`
-  when T0 writes nothing; `export` one object per worksheet written (`table`,
+  when nothing is written; `export` one object per worksheet written (`table`,
   `sheet`, `rows`, `columns`).
 - `summary`: `classify` `{tables, t0, t1, t2, t3}`; `check`
   `{tables, pass, fail}`; `import` `{written}` (0 or 1); `export`
