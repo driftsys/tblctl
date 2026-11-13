@@ -89,7 +89,12 @@ fn threshold_flags_override_defaults() {
 fn tables_in_fenced_code_are_ignored() {
     let dir = tempfile::tempdir().unwrap();
     let md = write(&dir, "a.md", &format!("```\n{}```\n", table(31, 2, "x")));
-    tblctl().arg("check").arg(&md).assert().code(0).stdout("");
+    tblctl()
+        .arg("check")
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stdout("0 tables: 0 passed, 0 failed\n");
 }
 
 #[test]
@@ -101,7 +106,8 @@ fn many_files_are_checked_in_order() {
     assert_eq!(out.status.code(), Some(1));
     let stdout = String::from_utf8(out.stdout).unwrap();
     let lines: Vec<&str> = stdout.lines().collect();
-    assert_eq!(lines.len(), 2);
+    assert_eq!(lines.len(), 3);
+    assert_eq!(lines[2], "2 tables: 1 passed, 1 failed");
     assert!(lines[0].starts_with("PASS") && lines[0].contains("a.md:1"));
     assert!(lines[1].starts_with("FAIL") && lines[1].contains("b.md:1"));
 }
@@ -224,4 +230,40 @@ fn an_escaped_bracket_does_not_open_a_link() {
         .assert()
         .code(1)
         .stdout(contains("cell 10 > 5"));
+}
+
+#[test]
+fn clicolor_force_colours_the_state_word_with_the_same_padding() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(
+        &dir,
+        "a.md",
+        &format!("{}\n{}", table(1, 1, "x"), table(31, 1, "x")),
+    );
+    let out = tblctl()
+        .arg("check")
+        .arg(&md)
+        .env("CLICOLOR_FORCE", "1")
+        .env_remove("NO_COLOR")
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("\x1b[32mPASS\x1b[0m    [T1] "), "{text:?}");
+    assert!(text.contains("\x1b[31mFAIL\x1b[0m    [T1] "), "{text:?}");
+}
+
+#[test]
+fn no_color_wins_over_clicolor_force() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(&dir, "a.md", &table(1, 1, "x"));
+    let out = tblctl()
+        .arg("check")
+        .arg(&md)
+        .env("CLICOLOR_FORCE", "1")
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(!text.contains('\x1b'), "{text:?}");
+    assert!(text.starts_with("PASS    [T1] "));
 }

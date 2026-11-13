@@ -165,7 +165,8 @@ fn import_writes_markdown_csv_or_link_stub() {
         .arg(&md)
         .assert()
         .code(0)
-        .stdout(contains("T1  markdown"));
+        .stdout("")
+        .stderr(contains("T1  markdown"));
     assert_eq!(
         std::fs::read_to_string(&md).unwrap(),
         "| id | name |\n|---|---|\n| 0 | item 0 |\n"
@@ -564,8 +565,9 @@ fn import_of_a_t0_table_writes_nothing_and_exits_0() {
         .arg(&out)
         .assert()
         .code(0)
-        .stdout(contains("T0  skip"))
-        .stdout(contains("nothing written"));
+        .stdout("")
+        .stderr(contains("T0  skip"))
+        .stderr(contains("nothing written"));
     assert!(!out.exists());
 }
 
@@ -638,7 +640,8 @@ fn export_reads_csv_and_writes_one_sheet_per_markdown_table() {
         .arg(&x)
         .assert()
         .code(0)
-        .stdout(contains("2 table(s)"));
+        .stdout("")
+        .stderr(contains("2 table(s)"));
     let s = sheets(&x);
     let names: Vec<&str> = s.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(names, ["Table1", "Table2"]);
@@ -822,4 +825,34 @@ fn export_accepts_an_uppercase_xlsx_extension() {
         .assert()
         .code(0);
     assert!(out.exists());
+}
+
+#[test]
+fn classify_text_ends_with_a_summary_and_colours_the_rule_on_demand() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "| a |\n|---|\n| 1 |\n\n| a |\n|---|\n| 1 |\n").unwrap();
+    let out = tblctl()
+        .arg("classify")
+        .arg(&md)
+        .env_remove("CLICOLOR_FORCE")
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(
+        text.lines().last(),
+        Some("2 tables: 1 T0, 1 T1, 0 T2, 0 T3")
+    );
+    assert!(!text.contains('\x1b'));
+
+    let out = tblctl()
+        .arg("classify")
+        .arg(&md)
+        .env("CLICOLOR_FORCE", "1")
+        .env_remove("NO_COLOR")
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("\x1b[32mT1\x1b[0m  markdown "), "{text:?}");
+    assert!(text.contains("\x1b[2mT0\x1b[0m  skip "), "{text:?}");
 }

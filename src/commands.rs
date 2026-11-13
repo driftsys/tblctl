@@ -1,6 +1,6 @@
 //! `classify`, `import` and `export`.
 
-use crate::output::emit;
+use crate::output::{emit, paint, DIM, GREEN, YELLOW};
 use crate::read;
 use crate::rules::{self, Limits, Rule, Target};
 use crate::table::Grid;
@@ -72,9 +72,14 @@ pub fn classify(files: &[PathBuf], limits: &Limits, json: bool) -> Result<i32> {
         items
             .iter()
             .map(|c| {
+                let style = match c.rule {
+                    Rule::T0 => DIM,
+                    Rule::T1 | Rule::T2 => GREEN,
+                    Rule::T3 => YELLOW,
+                };
                 let mut line = format!(
                     "{}  {:<9}{}#{}  {}×{}",
-                    rule_label(c.rule),
+                    paint(rule_label(c.rule), style, 0),
                     target_label(c.target),
                     c.file,
                     c.table,
@@ -87,10 +92,23 @@ pub fn classify(files: &[PathBuf], limits: &Limits, json: bool) -> Result<i32> {
                 }
                 line + "\n"
             })
+            .chain(std::iter::once(classify_summary(&items)))
             .collect()
     };
     emit(&text)?;
     Ok(if read_error { 2 } else { 0 })
+}
+
+fn classify_summary(items: &[Classified]) -> String {
+    let count = |rule: Rule| items.iter().filter(|c| c.rule == rule).count();
+    format!(
+        "{} tables: {} T0, {} T1, {} T2, {} T3\n",
+        items.len(),
+        count(Rule::T0),
+        count(Rule::T1),
+        count(Rule::T2),
+        count(Rule::T3)
+    )
 }
 
 fn pick(mut grids: Vec<Grid>, sheet: Option<&str>, file: &Path) -> Result<Grid> {
@@ -134,10 +152,7 @@ pub fn import(file: &Path, sheet: Option<&str>, out: &Path, limits: &Limits) -> 
         grid.name
     );
     if target == Target::Skip {
-        emit(&format!(
-            "{summary}  {}; nothing written\n",
-            verdict.reasons.join(", ")
-        ))?;
+        eprintln!("{summary}  {}; nothing written", verdict.reasons.join(", "));
         return Ok(0);
     }
     let expected = if target == Target::Csv { "csv" } else { "md" };
@@ -157,7 +172,7 @@ pub fn import(file: &Path, sheet: Option<&str>, out: &Path, limits: &Limits) -> 
         Target::Skip => unreachable!("handled above"),
     };
     std::fs::write(out, body)?;
-    emit(&format!("{summary}  -> {}\n", out.display()))?;
+    eprintln!("{summary}  -> {}", out.display());
     Ok(0)
 }
 
@@ -193,6 +208,6 @@ pub fn export(file: &Path, out: &Path) -> Result<i32> {
         bail!("{}: no table found", file.display());
     }
     write::xlsx(&grids, out)?;
-    emit(&format!("{} table(s) -> {}\n", grids.len(), out.display()))?;
+    eprintln!("{} table(s) -> {}", grids.len(), out.display());
     Ok(0)
 }

@@ -1,6 +1,7 @@
 //! `tblctl check`: flags Markdown tables over the T1 limits.
 
 use crate::markdown::{self, Table};
+use crate::output::{paint, GREEN, RED};
 use crate::rules::{self, Limits};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -45,14 +46,14 @@ fn evaluate(file: &str, table: Table, limits: &Limits) -> Report {
 
 fn render(r: &Report) -> String {
     let state = match r.status {
-        Status::Pass => "PASS",
-        Status::Fail => "FAIL",
+        Status::Pass => paint("PASS", GREEN, 8),
+        Status::Fail => paint("FAIL", RED, 8),
     };
     let mut detail = format!("{}×{}", r.rows, r.columns);
     if !r.reasons.is_empty() {
         detail = format!("{detail} {}; suggest CSV", r.reasons.join(", "));
     }
-    format!("{state:<8}[T1] {}:{}  {detail}", r.file, r.line)
+    format!("{state}[T1] {}:{}  {detail}", r.file, r.line)
 }
 
 /// Checks every table in `files` and returns the exit code: 2 if any file
@@ -85,6 +86,13 @@ pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> any
     }
     if json {
         text_out = serde_json::to_string_pretty(&reports)? + "\n";
+    } else {
+        let failed = reports.iter().filter(|r| r.status == Status::Fail).count();
+        text_out.push_str(&format!(
+            "{} tables: {} passed, {failed} failed\n",
+            reports.len(),
+            reports.len() - failed
+        ));
     }
     crate::output::emit(&text_out)?;
     Ok(if read_error {

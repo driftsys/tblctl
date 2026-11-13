@@ -965,6 +965,8 @@ dependencies = [
 name = "tblctl"
 version = "0.0.1"
 dependencies = [
+ "anstream",
+ "anstyle",
  "anyhow",
  "assert_cmd",
  "calamine",
