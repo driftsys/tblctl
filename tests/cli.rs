@@ -43,13 +43,22 @@ fn top_level_help_ends_with_the_readme_link() {
 
 #[test]
 fn every_command_help_has_examples() {
-    for cmd in ["classify", "import", "check", "export"] {
+    let examples = [
+        ("classify", "tblctl classify --json att/limits.xlsx"),
+        (
+            "import",
+            "tblctl import att/large.xlsx --sheet Data --out docs/data.csv",
+        ),
+        ("check", "tblctl check --max-rows 50 docs/spec.md"),
+        ("export", "tblctl export data/limits.csv --out limits.xlsx"),
+    ];
+    for (cmd, example) in examples {
         tblctl()
             .args([cmd, "--help"])
             .assert()
             .success()
             .stdout(contains("Examples:"))
-            .stdout(contains(format!("tblctl {cmd} ")));
+            .stdout(contains(example));
     }
 }
 

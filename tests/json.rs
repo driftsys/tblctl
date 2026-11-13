@@ -72,13 +72,14 @@ fn classify_reports_an_unsupported_type() {
 fn check_envelope_has_results_summary_and_no_errors() {
     let d = tempfile::tempdir().unwrap();
     let big = format!("| a |\n|---|\n{}", "| 1 |\n".repeat(31));
-    let a = md(&d, "a.md", &format!("{SMALL}\n{big}"));
+    let a = md(&d, "a.md", &format!("{SMALL}\n{big}\n{SMALL}"));
     let (code, v, stderr) = run(&[p("check"), p("--json"), &a]);
     assert_eq!(code, 1);
     assert_eq!(v["schema"], "tblctl/check/v1");
     assert_eq!(v["results"][0]["status"], "pass");
     assert_eq!(v["results"][1]["status"], "fail");
-    assert_eq!(v["summary"], json!({"tables": 2, "pass": 1, "fail": 1}));
+    assert_eq!(v["results"][2]["status"], "pass");
+    assert_eq!(v["summary"], json!({"tables": 3, "pass": 2, "fail": 1}));
     assert_eq!(v["errors"], json!([]));
     assert_eq!(stderr, "");
 }
@@ -100,6 +101,7 @@ fn import_reports_the_written_file() {
     let (code, v, stderr) = run(&[p("import"), p("--json"), &a, p("--out"), &out]);
     assert_eq!(code, 0);
     assert_eq!(v["schema"], "tblctl/import/v1");
+    assert_eq!(v["results"][0]["file"], a.display().to_string());
     assert_eq!(v["results"][0]["table"], "line 1");
     assert_eq!(v["results"][0]["rule"], "t1");
     assert_eq!(v["results"][0]["target"], "markdown");
@@ -114,8 +116,9 @@ fn import_of_a_t0_table_has_a_null_out() {
     let d = tempfile::tempdir().unwrap();
     let a = md(&d, "a.md", "| Date | Author |\n|---|---|\n| 2020 | me |\n");
     let out = d.path().join("out.md");
-    let (code, v, _) = run(&[p("import"), p("--json"), &a, p("--out"), &out]);
+    let (code, v, stderr) = run(&[p("import"), p("--json"), &a, p("--out"), &out]);
     assert_eq!(code, 0);
+    assert_eq!(stderr, "");
     assert_eq!(v["results"][0]["rule"], "t0");
     assert_eq!(v["results"][0]["out"], Value::Null);
     assert_eq!(v["results"][0]["reasons"], json!(["revision history"]));
@@ -150,6 +153,7 @@ fn import_errors_carry_codes_and_their_fields() {
     ]);
     assert_eq!(v["errors"][0]["code"], "no_such_table");
     assert_eq!(v["errors"][0]["tables"], json!(["line 1", "line 5"]));
+    assert_eq!(v["errors"][0]["hint"], "choose one with --sheet");
 
     let empty = md(&d, "empty.md", "no table\n");
     let (_, v, _) = run(&[p("import"), p("--json"), &empty, p("--out"), &out]);
@@ -160,6 +164,8 @@ fn import_errors_carry_codes_and_their_fields() {
     let (_, v, _) = run(&[p("import"), p("--json"), &a, p("--out"), &csv]);
     assert_eq!(v["errors"][0]["code"], "wrong_extension");
     assert_eq!(v["errors"][0]["expected"], "md");
+    assert_eq!(v["errors"][0]["file"], csv.display().to_string());
+    assert_eq!(v["errors"][0]["hint"], "use an --out path ending in .md");
     assert!(!csv.exists());
 
     let (_, v, _) = run(&[p("import"), p("--json"), &a, p("--out"), &a]);
@@ -257,4 +263,52 @@ fn envelope_keys_and_result_fields_keep_their_documented_order() {
     assert!(at("results") < at("summary"));
     assert!(at("summary") < at("errors"));
     assert!(at("file") < at("table") && at("table") < at("rule"));
+}
+
+#[test]
+fn export_of_one_table_names_its_sheet_sheet1() {
+    let d = tempfile::tempdir().unwrap();
+    let a = md(&d, "a.md", SMALL);
+    let out = d.path().join("out.xlsx");
+    let (code, v, _) = run(&[p("export"), p("--json"), &a, p("--out"), &out]);
+    assert_eq!(code, 0);
+    assert_eq!(v["results"][0]["sheet"], "Sheet1");
+}
+
+#[test]
+fn an_error_wins_over_a_failed_table_and_both_are_reported() {
+    let d = tempfile::tempdir().unwrap();
+    let big = md(
+        &d,
+        "big.md",
+        &format!("| a |\n|---|\n{}", "| 1 |\n".repeat(31)),
+    );
+    let missing = d.path().join("missing.md");
+    let (code, v, _) = run(&[p("check"), p("--json"), &missing, &big]);
+    assert_eq!(code, 2);
+    assert_eq!(v["results"][0]["status"], "fail");
+    assert_eq!(v["summary"], json!({"tables": 1, "pass": 0, "fail": 1}));
+    assert_eq!(v["errors"][0]["code"], "read_failed");
+}
+
+#[test]
+fn every_error_is_reported_in_json_and_on_stderr() {
+    let d = tempfile::tempdir().unwrap();
+    let one = d.path().join("one.md");
+    let two = d.path().join("two.md");
+    let (code, v, stderr) = run(&[p("classify"), p("--json"), &one, &two]);
+    assert_eq!(code, 2);
+    let errors = v["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 2);
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(lines.len(), 2, "{stderr}");
+    for (i, path) in [&one, &two].iter().enumerate() {
+        let message = errors[i]["message"].as_str().unwrap();
+        assert!(
+            message.starts_with(&format!("{}: ", path.display())),
+            "{message}"
+        );
+        assert_eq!(lines[i], format!("tblctl: {message}"));
+        assert!(errors[i].get("hint").is_none(), "{}", errors[i]);
+    }
 }

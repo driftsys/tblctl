@@ -836,23 +836,31 @@ fn export_accepts_an_uppercase_xlsx_extension() {
 fn classify_text_ends_with_a_summary_and_colours_the_rule_on_demand() {
     let d = tempfile::tempdir().unwrap();
     let md = d.path().join("a.md");
-    std::fs::write(&md, "| a |\n|---|\n| 1 |\n\n| a |\n|---|\n| 1 |\n").unwrap();
-    let out = tblctl()
-        .arg("classify")
-        .arg(&md)
-        .env_remove("CLICOLOR_FORCE")
-        .output()
-        .unwrap();
+    let t0 = "| Date | Author |\n|---|---|\n| 2020 | me |\n";
+    // Tables differ from each other: a duplicate table is T0.
+    let t1 = |c: &str| format!("| a |\n|---|\n| {c} |\n");
+    let t2 = |c: &str| format!("| b |\n|---|\n{}", format!("| {c} |\n").repeat(31));
+    let body = [t0.to_string(), t1("x"), t1("y"), t1("z"), t2("1"), t2("2")].join("\n");
+    std::fs::write(&md, body).unwrap();
+    let out = tblctl().arg("classify").arg(&md).output().unwrap();
     let text = String::from_utf8(out.stdout).unwrap();
     assert_eq!(
         text.lines().last(),
-        Some("2 tables: 1 T0, 1 T1, 0 T2, 0 T3")
+        Some("6 tables: 1 T0, 3 T1, 2 T2, 0 T3")
     );
     assert!(!text.contains('\x1b'));
 
+    let t3 = d.path().join("f.xlsx");
+    xlsx(&t3, &[("F", rows(40))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_formula(41, 0, Formula::new("=1+1"))
+            .unwrap();
+    });
     let out = tblctl()
         .arg("classify")
         .arg(&md)
+        .arg(&t3)
         .env("CLICOLOR_FORCE", "1")
         .env_remove("NO_COLOR")
         .output()
@@ -860,4 +868,6 @@ fn classify_text_ends_with_a_summary_and_colours_the_rule_on_demand() {
     let text = String::from_utf8(out.stdout).unwrap();
     assert!(text.contains("\x1b[32mT1\x1b[0m  markdown "), "{text:?}");
     assert!(text.contains("\x1b[2mT0\x1b[0m  skip "), "{text:?}");
+    assert!(text.contains("\x1b[32mT2\x1b[0m  csv "), "{text:?}");
+    assert!(text.contains("\x1b[33mT3\x1b[0m  link "), "{text:?}");
 }
