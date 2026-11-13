@@ -237,3 +237,20 @@ fn argument_errors_stay_clap_text_with_exit_2() {
     assert!(out.stdout.is_empty());
     assert!(!out.stderr.is_empty());
 }
+
+#[test]
+fn envelope_keys_and_result_fields_keep_their_documented_order() {
+    let d = tempfile::tempdir().unwrap();
+    let a = md(&d, "a.md", SMALL);
+    let out = tblctl()
+        .args(["classify", "--json"])
+        .arg(&a)
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    let at = |key: &str| text.find(&format!("\"{key}\"")).unwrap();
+    assert!(at("schema") < at("results"));
+    assert!(at("results") < at("summary"));
+    assert!(at("summary") < at("errors"));
+    assert!(at("file") < at("table") && at("table") < at("rule"));
+}
