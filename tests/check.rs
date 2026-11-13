@@ -189,3 +189,17 @@ fn closed_stdout_does_not_panic() {
     assert_eq!(out.status.code(), Some(1));
     assert!(!String::from_utf8_lossy(&out.stderr).contains("panicked"));
 }
+
+#[test]
+fn a_link_counts_as_its_text_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!("https://example.com/{}", "a".repeat(130));
+    let md = write(&dir, "a.md", &format!("| h |\n|---|\n| [spec]({url}) |\n"));
+    tblctl().arg("check").arg(&md).assert().code(0);
+    tblctl()
+        .args(["classify", "--json"])
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stdout(contains("\"rule\": \"t1\""));
+}
