@@ -56,7 +56,8 @@ fn classify_json(files: &[PathBuf]) -> serde_json::Value {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    serde_json::from_slice(&out.stdout).unwrap()
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    v["results"].clone()
 }
 
 #[test]

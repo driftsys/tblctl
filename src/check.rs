@@ -1,9 +1,11 @@
 //! `tblctl check`: flags Markdown tables over the T1 limits.
 
+use crate::error::Error;
 use crate::markdown::{self, Table};
 use crate::output::{paint, GREEN, RED};
 use crate::rules::{self, Limits};
 use serde::Serialize;
+use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Serialize, PartialEq)]
@@ -61,45 +63,42 @@ fn render(r: &Report) -> String {
 ///
 /// `_strict` turns REVIEW into a failure. `check` reports no REVIEW state
 /// yet, so the flag has no effect.
-pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> anyhow::Result<i32> {
+pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> i32 {
     let mut reports = Vec::new();
-    let mut text_out = String::new();
-    let mut read_error = false;
+    let mut errors = Vec::new();
     for path in files {
         let name = path.display().to_string();
         match std::fs::read_to_string(path) {
             Ok(text) => {
                 for table in markdown::tables(&text) {
-                    let report = evaluate(&name, table, limits);
-                    if !json {
-                        text_out.push_str(&render(&report));
-                        text_out.push('\n');
-                    }
-                    reports.push(report);
+                    reports.push(evaluate(&name, table, limits));
                 }
             }
-            Err(err) => {
-                eprintln!("tblctl: {name}: {err}");
-                read_error = true;
-            }
+            Err(err) => errors.push(Error::ReadFailed {
+                message: format!("{name}: {err}"),
+                file: name,
+            }),
         }
     }
-    if json {
-        text_out = serde_json::to_string_pretty(&reports)? + "\n";
-    } else {
-        let failed = reports.iter().filter(|r| r.status == Status::Fail).count();
-        text_out.push_str(&format!(
-            "{} tables: {} passed, {failed} failed\n",
-            reports.len(),
-            reports.len() - failed
-        ));
-    }
-    crate::output::emit(&text_out)?;
-    Ok(if read_error {
-        2
-    } else if reports.iter().any(|r| r.status == Status::Fail) {
-        1
-    } else {
-        0
-    })
+    let failed = reports.iter().filter(|r| r.status == Status::Fail).count();
+    let mut text: String = reports.iter().map(|r| render(r) + "\n").collect();
+    text.push_str(&format!(
+        "{} tables: {} passed, {failed} failed\n",
+        reports.len(),
+        reports.len() - failed
+    ));
+    let summary = json!({
+        "tables": reports.len(),
+        "pass": reports.len() - failed,
+        "fail": failed,
+    });
+    crate::output::finish(
+        "check",
+        json,
+        json!(reports),
+        summary,
+        &errors,
+        &text,
+        failed > 0,
+    )
 }

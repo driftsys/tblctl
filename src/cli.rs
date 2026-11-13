@@ -63,6 +63,9 @@ pub enum Command {
         /// Output path (.md for Markdown or a link stub, .csv for CSV)
         #[arg(long)]
         out: PathBuf,
+        /// Emit JSON
+        #[arg(long)]
+        json: bool,
         #[command(flatten)]
         limits: LimitArgs,
     },
@@ -94,5 +97,8 @@ pub enum Command {
         /// Output XLSX path
         #[arg(long)]
         out: PathBuf,
+        /// Emit JSON
+        #[arg(long)]
+        json: bool,
     },
 }

@@ -127,7 +127,7 @@ fn unreadable_file_exits_2_and_still_checks_the_rest() {
 }
 
 #[test]
-fn json_is_an_array_with_one_object_per_table() {
+fn json_results_hold_one_object_per_table() {
     let dir = tempfile::tempdir().unwrap();
     let md = write(
         &dir,
@@ -141,7 +141,7 @@ fn json_is_an_array_with_one_object_per_table() {
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let arr = v.as_array().unwrap();
+    let arr = v["results"].as_array().unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0]["status"], "pass");
     assert_eq!(arr[0]["rule"], "t1");
