@@ -67,6 +67,33 @@ pub fn tables(text: &str) -> Vec<Table> {
     out
 }
 
+/// Number of characters in a cell's Markdown source, with each link or
+/// image `[text](url)` counted as `text` only.
+pub fn visible_len(cell: &str) -> usize {
+    let mut n = 0;
+    let mut rest = cell;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        let link = after.find("](").and_then(|close| {
+            after[close + 2..]
+                .find(')')
+                .map(|end| (close, close + 2 + end + 1))
+        });
+        match link {
+            Some((close, skip)) => {
+                n += rest[..open].trim_end_matches('!').chars().count();
+                n += after[..close].chars().count();
+                rest = &after[skip..];
+            }
+            None => {
+                n += rest[..=open].chars().count();
+                rest = after;
+            }
+        }
+    }
+    n + rest.chars().count()
+}
+
 fn indent(line: &str) -> usize {
     line.len() - line.trim_start_matches(' ').len()
 }
@@ -187,6 +214,14 @@ mod tests {
     fn row_without_pipe_continues_the_table_until_another_block() {
         let t = tables("a | b\n--- | ---\nfoo\n> quote | x\n");
         assert_eq!(t[0].rows, [["foo", ""]]);
+    }
+
+    #[test]
+    fn visible_len_drops_link_urls() {
+        assert_eq!(visible_len("plain"), 5);
+        assert_eq!(visible_len("[spec](https://example.com/a/b/c)"), 4);
+        assert_eq!(visible_len("see ![logo](x.png) and [a](b)"), 14);
+        assert_eq!(visible_len("[not a link"), 11);
     }
 
     #[test]

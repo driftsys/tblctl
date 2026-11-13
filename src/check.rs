@@ -1,16 +1,10 @@
 //! `tblctl check`: flags Markdown tables over the T1 limits.
 
 use crate::markdown::{self, Table};
+use crate::rules::{self, Limits};
+use crate::table::{Facts, Grid};
 use serde::Serialize;
-use std::io::Write;
 use std::path::PathBuf;
-
-/// T1 size limits.
-pub struct Limits {
-    pub max_rows: usize,
-    pub max_cols: usize,
-    pub max_cell: usize,
-}
 
 #[derive(Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -30,25 +24,21 @@ struct Report {
     reasons: Vec<String>,
 }
 
-fn evaluate(file: &str, table: &Table, limits: &Limits) -> Report {
-    let rows = table.rows.len();
-    let columns = table.header.len();
-    let longest = std::iter::once(&table.header)
-        .chain(&table.rows)
-        .flatten()
-        .map(|c| c.chars().count())
-        .max()
-        .unwrap_or(0);
-    let mut reasons = Vec::new();
-    if rows > limits.max_rows {
-        reasons.push(format!("rows {rows} > {}", limits.max_rows));
-    }
-    if columns > limits.max_cols {
-        reasons.push(format!("columns {columns} > {}", limits.max_cols));
-    }
-    if longest > limits.max_cell {
-        reasons.push(format!("cell {longest} > {}", limits.max_cell));
-    }
+fn evaluate(file: &str, table: Table, limits: &Limits) -> Report {
+    let line = table.line;
+    let mut rows = vec![table.header];
+    rows.extend(table.rows);
+    let grid = Grid {
+        file: file.to_string(),
+        name: format!("line {line}"),
+        rows,
+        facts: Facts {
+            visible_sheets: 1,
+            markdown: true,
+            ..Facts::default()
+        },
+    };
+    let reasons = rules::size_reasons(&grid, limits);
     let status = if reasons.is_empty() {
         Status::Pass
     } else {
@@ -56,11 +46,11 @@ fn evaluate(file: &str, table: &Table, limits: &Limits) -> Report {
     };
     Report {
         file: file.to_string(),
-        line: table.line,
+        line,
         status,
         rule: "t1",
-        rows,
-        columns,
+        rows: grid.data_rows(),
+        columns: grid.columns(),
         reasons,
     }
 }
@@ -91,7 +81,7 @@ pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> any
         match std::fs::read_to_string(path) {
             Ok(text) => {
                 for table in markdown::tables(&text) {
-                    let report = evaluate(&name, &table, limits);
+                    let report = evaluate(&name, table, limits);
                     if !json {
                         text_out.push_str(&render(&report));
                         text_out.push('\n');
@@ -108,13 +98,7 @@ pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> any
     if json {
         text_out = serde_json::to_string_pretty(&reports)? + "\n";
     }
-    // A closed stdout (for example `| head`) is not an error: the exit code
-    // still reports the check result.
-    if let Err(err) = std::io::stdout().lock().write_all(text_out.as_bytes()) {
-        if err.kind() != std::io::ErrorKind::BrokenPipe {
-            return Err(err.into());
-        }
-    }
+    crate::output::emit(&text_out)?;
     Ok(if read_error {
         2
     } else if reports.iter().any(|r| r.status == Status::Fail) {
