@@ -81,18 +81,24 @@ pub fn size_reasons(grid: &Grid, limits: &Limits) -> Vec<String> {
     reasons
 }
 
+/// True if one header cell has the word `date` and a different header cell
+/// has the word `author`, `description` or `modification` (any case).
 fn is_revision_history(grid: &Grid) -> bool {
     let Some(header) = grid.rows.first() else {
         return false;
     };
-    let lower: Vec<String> = header.iter().map(|c| c.to_lowercase()).collect();
-    let has_date = lower.iter().any(|c| c.contains("date"));
-    let has_other = lower.iter().any(|c| {
-        ["author", "description", "modification", "change"]
-            .iter()
-            .any(|k| c.contains(k))
-    });
-    has_date && has_other
+    let has = |cell: &str, keys: &[&str]| {
+        cell.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|w| keys.contains(&w))
+    };
+    header.iter().enumerate().any(|(i, a)| {
+        has(a, &["date"])
+            && header
+                .iter()
+                .enumerate()
+                .any(|(j, b)| j != i && has(b, &["author", "description", "modification"]))
+    })
 }
 
 fn content_hash(grid: &Grid) -> [u8; 32] {
@@ -231,6 +237,63 @@ mod tests {
             &LIMITS,
         );
         assert_eq!(v[0].rule, Rule::T0);
+    }
+
+    #[test]
+    fn revision_history_needs_whole_words_in_two_columns() {
+        for (header, want) in [
+            (&["Date", "Description"][..], Rule::T0),
+            (&["Release date", "Modification"][..], Rule::T0),
+            (&["DATE", "AUTHOR"][..], Rule::T0),
+            (&["Update", "Description"][..], Rule::T1),
+            (&["Date", "Value"][..], Rule::T1),
+            (&["Author", "Name"][..], Rule::T1),
+            (&["Date of description"][..], Rule::T1),
+            (&["Date", "Change"][..], Rule::T1),
+            (&["Validated", "Authority"][..], Rule::T1),
+        ] {
+            let mut g = grid(&[header]);
+            g.rows.push(vec!["1".into(); header.len()]);
+            assert_eq!(classify(&[g], &LIMITS)[0].rule, want, "{header:?}");
+        }
+    }
+
+    #[test]
+    fn duplicate_names_the_earlier_table() {
+        let mut a = grid(&[&["a"], &["1"]]);
+        a.name = "first".into();
+        let mut b = grid(&[&["a"], &["1"]]);
+        b.name = "second".into();
+        let v = classify(&[a, b], &LIMITS);
+        assert_eq!(v[1].reasons, ["duplicate of f#first"]);
+    }
+
+    #[test]
+    fn limits_are_inclusive() {
+        let mut at = grid(&[&["a"; 8]]);
+        for _ in 0..30 {
+            at.rows.push(vec!["x".repeat(120); 8]);
+        }
+        assert_eq!(classify(&[at], &LIMITS)[0].rule, Rule::T1);
+
+        let mut rows = grid(&[&["a"]]);
+        for i in 0..31 {
+            rows.rows.push(vec![i.to_string()]);
+        }
+        let cols = grid(&[&["a"; 9], &["1"; 9]]);
+        let long = "x".repeat(121);
+        let cell = grid(&[&["a"], &[long.as_str()]]);
+        let v = classify(&[rows, cols, cell], &LIMITS);
+        assert_eq!(v[0].reasons, ["rows 31 > 30"]);
+        assert_eq!(v[1].reasons, ["columns 9 > 8"]);
+        assert_eq!(v[2].reasons, ["cell 121 > 120"]);
+    }
+
+    #[test]
+    fn header_cells_count_toward_cell_length() {
+        let long = "x".repeat(121);
+        let g = grid(&[&[long.as_str()], &["1"]]);
+        assert_eq!(classify(&[g], &LIMITS)[0].reasons, ["cell 121 > 120"]);
     }
 
     #[test]
