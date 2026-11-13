@@ -6,6 +6,15 @@ use anstyle::{AnsiColor, Style};
 use serde_json::{json, Value};
 use std::io::Write;
 
+/// "1 table" or "N tables".
+pub fn tables(n: usize) -> String {
+    if n == 1 {
+        "1 table".to_string()
+    } else {
+        format!("{n} tables")
+    }
+}
+
 /// Writes `text` to stdout. ANSI styles in `text` are kept only when stdout
 /// is a terminal or `CLICOLOR_FORCE` is set; `NO_COLOR` removes them in all
 /// cases. A closed stdout (for example `| head`) is not an error: the exit

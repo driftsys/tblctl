@@ -50,8 +50,9 @@ A table fails when rows, columns or the longest cell exceed `--max-rows`,
 Text: one line per table, as in AD-0001, with the detail `rows×columns` and, on
 failure, the reasons followed by `suggest CSV`. A last line gives the totals:
 `N tables: P passed, F failed` (`0 tables: 0 passed, 0 failed` when there is no
-table). `PASS` is green and `FAIL` red when stdout is a terminal or
-`CLICOLOR_FORCE` is set, and never when `NO_COLOR` is set (`src/output.rs`).
+table, `1 table: …` for one). `PASS` is green and `FAIL` red when stdout is a
+terminal or `CLICOLOR_FORCE` is set, and never when `NO_COLOR` is set
+(`src/output.rs`).
 
 `--json` prints the envelope of AD-0005 with schema `tblctl/check/v1`. `results`
 has one object per table, in input order then document order. Fields: `file`,

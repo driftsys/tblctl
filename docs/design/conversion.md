@@ -68,11 +68,12 @@ T2; no reader extracts colour yet.
 
 - `classify <file…> [--json]` prints one line per table
   (`T2  csv      a.xlsx#Sheet1  40×2  rows 40 > 30`) and a last line
-  `N tables: a T0, b T1, c T2, d T3`. The rule is dim (T0), green (T1, T2) or
-  yellow (T3) when stdout is a terminal or `CLICOLOR_FORCE` is set, and never
-  when `NO_COLOR` is set. With `--json` it prints the envelope of AD-0005
-  (schema `tblctl/classify/v1`, the objects of AD-0002 in `results`, summary
-  `{tables, t0, t1, t2, t3}`). Exit 2 if a file cannot be read, otherwise 0.
+  `N tables: a T0, b T1, c T2, d T3` (`1 table: …` for one). The rule is dim
+  (T0), green (T1, T2) or yellow (T3) when stdout is a terminal or
+  `CLICOLOR_FORCE` is set, and never when `NO_COLOR` is set. With `--json` it
+  prints the envelope of AD-0005 (schema `tblctl/classify/v1`, the objects of
+  AD-0002 in `results`, summary `{tables, t0, t1, t2, t3}`). Exit 2 if a file
+  cannot be read, otherwise 0.
 - `import <file> [--sheet NAME] --out PATH [--json]` classifies the selected
   table and writes a Markdown table (T1), CSV (T2) or a one-line link stub (T3).
   `--out` must end in `.md` (T1, T3) or `.csv` (T2). T0 writes nothing and

@@ -62,7 +62,8 @@ Human output:
 - Every command's `--help` has an `Examples:` section, and the top-level help
   ends with a link to the README.
 - `check` text output ends with `N tables: P passed, F failed`; `classify` text
-  output ends with `N tables: a T0, b T1, c T2, d T3`.
+  output ends with `N tables: a T0, b T1, c T2, d T3`. One table is written
+  `1 table`.
 - The state word of `check` (`PASS` green, `FAIL` red) and the rule of
   `classify` (T0 dim, T1 and T2 green, T3 yellow) are coloured only when stdout
   is a terminal. `NO_COLOR` with a non-empty value turns colour off;

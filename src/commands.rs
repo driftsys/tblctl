@@ -111,8 +111,8 @@ pub fn classify(files: &[PathBuf], limits: &Limits, json: bool) -> i32 {
 fn classify_summary(items: &[Classified]) -> String {
     let count = |rule: Rule| items.iter().filter(|c| c.rule == rule).count();
     format!(
-        "{} tables: {} T0, {} T1, {} T2, {} T3\n",
-        items.len(),
+        "{}: {} T0, {} T1, {} T2, {} T3\n",
+        crate::output::tables(items.len()),
         count(Rule::T0),
         count(Rule::T1),
         count(Rule::T2),

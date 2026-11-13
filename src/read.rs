@@ -32,12 +32,25 @@ pub fn tables(path: &Path) -> std::result::Result<Vec<Grid>, Error> {
     };
     let mut grids = read.map_err(|err| Error::ReadFailed {
         file: file.clone(),
-        message: format!("{err:#}"),
+        message: chain_message(&err),
     })?;
     for g in &mut grids {
         g.normalise();
     }
     Ok(grids)
+}
+
+/// Joins an error chain with ": ", leaving out each cause whose text is
+/// already part of an earlier message (calamine repeats its I/O cause).
+fn chain_message(err: &anyhow::Error) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for cause in err.chain() {
+        let text = cause.to_string();
+        if !parts.iter().any(|p| p.contains(&text)) {
+            parts.push(text);
+        }
+    }
+    parts.join(": ")
 }
 
 fn markdown_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {

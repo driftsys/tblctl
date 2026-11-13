@@ -267,3 +267,31 @@ fn no_color_wins_over_clicolor_force() {
     assert!(!text.contains('\x1b'), "{text:?}");
     assert!(text.starts_with("PASS    [T1] "));
 }
+
+#[test]
+fn summary_uses_singular_for_one_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(&dir, "a.md", &table(1, 1, "x"));
+    tblctl()
+        .arg("check")
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stdout(contains("1 table: 1 passed, 0 failed\n"));
+}
+
+#[test]
+fn missing_workbook_error_does_not_repeat_the_cause() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = tblctl()
+        .arg("classify")
+        .arg(dir.path().join("missing.xlsx"))
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        err.matches("No such file").count() + err.matches("cannot find").count(),
+        1,
+        "{err}"
+    );
+}
