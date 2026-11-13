@@ -156,3 +156,36 @@ fn strict_is_accepted() {
         .assert()
         .code(0);
 }
+
+#[test]
+fn extra_body_cells_do_not_add_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(
+        &dir,
+        "a.md",
+        "| a | b |\n|---|---|\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |\n",
+    );
+    tblctl()
+        .arg("check")
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stdout(contains("1×2"));
+}
+
+#[test]
+fn closed_stdout_does_not_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(&dir, "a.md", &table(31, 1, "x").repeat(2000));
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
+        .arg("check")
+        .arg(&md)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("panicked"));
+}

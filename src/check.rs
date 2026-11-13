@@ -2,6 +2,7 @@
 
 use crate::markdown::{self, Table};
 use serde::Serialize;
+use std::io::Write;
 use std::path::PathBuf;
 
 /// T1 size limits.
@@ -31,11 +32,7 @@ struct Report {
 
 fn evaluate(file: &str, table: &Table, limits: &Limits) -> Report {
     let rows = table.rows.len();
-    let columns = std::iter::once(&table.header)
-        .chain(&table.rows)
-        .map(Vec::len)
-        .max()
-        .unwrap_or(0);
+    let columns = table.header.len();
     let longest = std::iter::once(&table.header)
         .chain(&table.rows)
         .flatten()
@@ -87,6 +84,7 @@ fn render(r: &Report) -> String {
 /// yet, so the flag has no effect.
 pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> anyhow::Result<i32> {
     let mut reports = Vec::new();
+    let mut text_out = String::new();
     let mut read_error = false;
     for path in files {
         let name = path.display().to_string();
@@ -95,7 +93,8 @@ pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> any
                 for table in markdown::tables(&text) {
                     let report = evaluate(&name, &table, limits);
                     if !json {
-                        println!("{}", render(&report));
+                        text_out.push_str(&render(&report));
+                        text_out.push('\n');
                     }
                     reports.push(report);
                 }
@@ -107,7 +106,14 @@ pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> any
         }
     }
     if json {
-        println!("{}", serde_json::to_string_pretty(&reports)?);
+        text_out = serde_json::to_string_pretty(&reports)? + "\n";
+    }
+    // A closed stdout (for example `| head`) is not an error: the exit code
+    // still reports the check result.
+    if let Err(err) = std::io::stdout().lock().write_all(text_out.as_bytes()) {
+        if err.kind() != std::io::ErrorKind::BrokenPipe {
+            return Err(err.into());
+        }
     }
     Ok(if read_error {
         2
