@@ -1,22 +1,46 @@
+mod check;
 mod cli;
+mod commands;
+mod markdown;
+mod output;
+mod read;
+mod rules;
+mod table;
+mod write;
 
 use clap::Parser;
-use cli::{Cli, Command};
+use cli::{Cli, Command, LimitArgs};
+use rules::Limits;
 
-const TRACKING: &str = "https://github.com/driftsys/tblctl/issues/1";
-
-fn not_yet_implemented(name: &str) -> anyhow::Result<i32> {
-    eprintln!("{name}: not yet implemented (tracking: {TRACKING})");
-    Ok(2)
+fn limits(a: LimitArgs) -> Limits {
+    Limits {
+        max_rows: a.max_rows,
+        max_cols: a.max_cols,
+        max_cell: a.max_cell,
+    }
 }
 
 fn main() {
     let cli = Cli::parse();
     let result = match cli.command {
-        Command::Classify { .. } => not_yet_implemented("classify"),
-        Command::Import { .. } => not_yet_implemented("import"),
-        Command::Check { .. } => not_yet_implemented("check"),
-        Command::Export { .. } => not_yet_implemented("export"),
+        Command::Classify {
+            files,
+            json,
+            limits: l,
+        } => commands::classify(&files, &limits(l), json),
+        Command::Import {
+            file,
+            sheet,
+            out,
+            limits: l,
+        } => commands::import(&file, sheet.as_deref(), &out, &limits(l)),
+        Command::Check {
+            files,
+            json,
+            strict,
+            limits: l,
+        } => check::run(&files, &limits(l), json, strict),
+        Command::Export { file, out } => commands::export(&file, &out),
     };
     match result {
         Ok(code) => std::process::exit(code),

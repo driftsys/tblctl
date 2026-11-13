@@ -25,19 +25,3 @@ fn help_lists_all_subcommands() {
         .stdout(contains("check"))
         .stdout(contains("export"));
 }
-
-#[test]
-fn stubs_exit_2_with_tracking_link() {
-    for args in [
-        &["classify", "a.xlsx", "--json"][..],
-        &["import", "a.xlsx", "--out", "a.md"][..],
-        &["check", "a.md"][..],
-        &["export", "a.csv", "--out", "a.xlsx"][..],
-    ] {
-        tblctl()
-            .args(args)
-            .assert()
-            .code(2)
-            .stderr(contains("not yet implemented"));
-    }
-}
