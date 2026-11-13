@@ -64,7 +64,7 @@ pub fn classify(files: &[PathBuf], limits: &Limits, json: bool) -> i32 {
             reasons: v.reasons,
         })
         .collect();
-    let text: String = items
+    let mut text: String = items
         .iter()
         .map(|c| {
             let style = match c.rule {
@@ -87,8 +87,12 @@ pub fn classify(files: &[PathBuf], limits: &Limits, json: bool) -> i32 {
             }
             line + "\n"
         })
-        .chain(std::iter::once(classify_summary(&items)))
         .collect();
+    // No summary line when every input failed to read: "0 tables" would read
+    // as a clean result.
+    if errors.len() < files.len() {
+        text.push_str(&classify_summary(&items));
+    }
     let count = |rule: Rule| items.iter().filter(|c| c.rule == rule).count();
     let summary = json!({
         "tables": items.len(),
@@ -313,8 +317,8 @@ fn export_tables(file: &Path, out: &Path) -> Result<Vec<Grid>, Error> {
         return Err(Error::NoTable { file: file_name });
     }
     write::xlsx(&grids, out).map_err(|e| Error::WriteFailed {
+        message: format!("{out_name}: {e:#}"),
         file: out_name,
-        message: format!("{e:#}"),
     })?;
     Ok(grids)
 }

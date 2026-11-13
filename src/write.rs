@@ -1,7 +1,7 @@
 //! Writes a table as Markdown, CSV, a link stub or XLSX.
 
 use crate::table::Grid;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::{Component, Path, PathBuf};
 
 /// Escapes a cell for a pipe table: Markdown punctuation that would change
@@ -156,7 +156,7 @@ pub fn xlsx(grids: &[Grid], out: &Path) -> Result<()> {
             }
         }
     }
-    wb.save(out).with_context(|| out.display().to_string())?;
+    wb.save(out)?;
     Ok(())
 }
 

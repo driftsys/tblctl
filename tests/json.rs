@@ -312,3 +312,52 @@ fn every_error_is_reported_in_json_and_on_stderr() {
         assert!(errors[i].get("hint").is_none(), "{}", errors[i]);
     }
 }
+
+#[test]
+fn no_summary_line_when_every_input_failed_to_read() {
+    let d = tempfile::tempdir().unwrap();
+    let missing = d.path().join("missing.md");
+    for cmd in ["check", "classify"] {
+        let out = tblctl().arg(cmd).arg(&missing).output().unwrap();
+        assert_eq!(out.status.code(), Some(2));
+        assert_eq!(String::from_utf8(out.stdout).unwrap(), "", "{cmd}");
+    }
+}
+
+#[test]
+fn a_malformed_docx_error_names_the_file() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("bad.docx");
+    let f = std::fs::File::create(&path).unwrap();
+    let mut z = zip::ZipWriter::new(f);
+    z.start_file(
+        "word/document.xml",
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
+    std::io::Write::write_all(&mut z, b"<w:document><w:body></w:tbl>").unwrap();
+    z.finish().unwrap();
+    let (code, v, _) = run(&[p("classify"), p("--json"), &path]);
+    assert_eq!(code, 2);
+    let message = v["errors"][0]["message"].as_str().unwrap();
+    assert!(
+        message.starts_with(&format!("{}: ", path.display())),
+        "{message}"
+    );
+}
+
+#[test]
+fn an_xlsx_write_error_names_the_output_file() {
+    let d = tempfile::tempdir().unwrap();
+    let long = "x".repeat(32_768);
+    let a = md(&d, "a.md", &format!("| a |\n|---|\n| {long} |\n"));
+    let out = d.path().join("out.xlsx");
+    let (code, v, _) = run(&[p("export"), p("--json"), &a, p("--out"), &out]);
+    assert_eq!(code, 2);
+    assert_eq!(v["errors"][0]["code"], "write_failed");
+    let message = v["errors"][0]["message"].as_str().unwrap();
+    assert!(
+        message.starts_with(&format!("{}: ", out.display())),
+        "{message}"
+    );
+}

@@ -270,8 +270,10 @@ fn docx_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
     let mut xml = String::new();
     zip.by_name("word/document.xml")
         .with_context(|| format!("{file}: no word/document.xml"))?
-        .read_to_string(&mut xml)?;
-    Ok(docx::parse(&xml)?
+        .read_to_string(&mut xml)
+        .with_context(|| file.to_string())?;
+    Ok(docx::parse(&xml)
+        .with_context(|| file.to_string())?
         .into_iter()
         .enumerate()
         .map(|(i, (rows, facts))| Grid {

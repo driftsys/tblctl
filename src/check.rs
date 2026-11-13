@@ -82,11 +82,15 @@ pub fn run(files: &[PathBuf], limits: &Limits, json: bool, _strict: bool) -> i32
     }
     let failed = reports.iter().filter(|r| r.status == Status::Fail).count();
     let mut text: String = reports.iter().map(|r| render(r) + "\n").collect();
-    text.push_str(&format!(
-        "{}: {} passed, {failed} failed\n",
-        crate::output::tables(reports.len()),
-        reports.len() - failed
-    ));
+    // No summary line when every input failed to read: "0 tables" would read
+    // as a clean result.
+    if errors.len() < files.len() {
+        text.push_str(&format!(
+            "{}: {} passed, {failed} failed\n",
+            crate::output::tables(reports.len()),
+            reports.len() - failed
+        ));
+    }
     let summary = json!({
         "tables": reports.len(),
         "pass": reports.len() - failed,
