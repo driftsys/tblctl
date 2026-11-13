@@ -11,12 +11,12 @@ cells, formulas, images, number of visible sheets).
 
 ## Readers
 
-| Input                      | Library                                    | One table per           |
-| -------------------------- | ------------------------------------------ | ----------------------- |
-| XLSX, XLSM, XLS, XLSB, ODS | `calamine`                                 | visible worksheet       |
-| DOCX                       | `zip` + `quick-xml` on `word/document.xml` | top-level `w:tbl`       |
-| CSV                        | `csv`                                      | file                    |
-| Markdown                   | `src/markdown.rs`                          | pipe table outside code |
+| Input                      | Library                                    | One table per                             |
+| -------------------------- | ------------------------------------------ | ----------------------------------------- |
+| XLSX, XLSM, XLS, XLSB, ODS | `calamine`                                 | visible worksheet                         |
+| DOCX                       | `zip` + `quick-xml` on `word/document.xml` | top-level `w:tbl`                         |
+| CSV                        | `csv`                                      | file                                      |
+| Markdown                   | `src/markdown.rs`                          | pipe table outside code and HTML comments |
 
 - Hidden sheets, chart sheets, dialog sheets, macro sheets and VBA sheets are
   skipped.

@@ -70,7 +70,7 @@ Rules, first match wins:
 or `.csv` (T2). `--sheet` selects a table when the input has several (a sheet
 name, `line N` for Markdown, `table N` for DOCX).
 
-`check` prints one line per pipe table outside code blocks:
+`check` prints one line per pipe table outside code blocks and HTML comments:
 
 ```text
 PASS    [T1] docs/spec.md:12  3×4
