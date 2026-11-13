@@ -4,11 +4,21 @@ use crate::table::Grid;
 use anyhow::{Context, Result};
 use std::path::{Component, Path, PathBuf};
 
+/// Escapes a cell for a pipe table: Markdown punctuation that would change
+/// how the text renders gets a backslash, and a line break becomes `<br>`.
 fn md_cell(cell: &str) -> String {
-    cell.trim()
-        .replace('|', "\\|")
-        .replace("\r\n", "\n")
-        .replace('\n', "<br>")
+    let mut out = String::new();
+    for c in cell.trim().replace("\r\n", "\n").chars() {
+        match c {
+            '\n' => out.push_str("<br>"),
+            '\\' | '|' | '*' | '_' | '`' | '[' | ']' | '<' | '>' | '&' | '~' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Renders `grid` as a GFM pipe table. The first row is the header.
@@ -43,15 +53,17 @@ pub fn link_stub(grid: &Grid, source: &Path, out: &Path) -> Result<String> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| grid.file.clone());
-    let label = label.replace('[', "\\[").replace(']', "\\]");
+    let escape = |s: &str| s.replace('[', "\\[").replace(']', "\\]");
+    let label = escape(&label);
+    let sheet = escape(&grid.name);
+    let target = target.replace('%', "%25").replace('#', "%23");
     let target = if target.contains([' ', '(', ')', '<', '>']) {
         format!("<{}>", target.replace('<', "%3C").replace('>', "%3E"))
     } else {
         target
     };
     Ok(format!(
-        "[{label} — {}, {} rows × {} columns]({target})\n",
-        grid.name,
+        "[{label} — {sheet}, {} rows × {} columns]({target})\n",
         grid.data_rows(),
         grid.columns()
     ))
@@ -161,6 +173,15 @@ mod tests {
     }
 
     #[test]
+    fn markdown_escapes_punctuation_that_changes_rendering() {
+        let g = grid(&[&["a"], &["<v> *r* _u_ `c` [l] a\\b &amp; ~s~"]]);
+        assert_eq!(
+            markdown(&g),
+            "| a |\n|---|\n| \\<v\\> \\*r\\* \\_u\\_ \\`c\\` \\[l\\] a\\\\b \\&amp; \\~s\\~ |\n"
+        );
+    }
+
+    #[test]
     fn csv_quotes_when_needed() {
         let g = grid(&[&["a", "b"], &["x,y", "z"]]);
         assert_eq!(csv(&g).unwrap(), "a,b\n\"x,y\",z\n");
@@ -183,6 +204,17 @@ mod tests {
         assert_eq!(
             s,
             "[Plan (v2).xlsx — Sheet1, 1 rows × 1 columns](<Plan (v2).xlsx>)\n"
+        );
+    }
+
+    #[test]
+    fn link_encodes_hash_and_percent_and_escapes_the_sheet_name() {
+        let mut g = grid(&[&["a"], &["1"]]);
+        g.name = "A]".into();
+        let s = link_stub(&g, Path::new("/r/req#1 50%.xlsx"), Path::new("/r/t.md")).unwrap();
+        assert_eq!(
+            s,
+            "[req#1 50%.xlsx — A\\], 1 rows × 1 columns](<req%231 50%25.xlsx>)\n"
         );
     }
 

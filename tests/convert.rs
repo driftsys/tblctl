@@ -382,3 +382,316 @@ fn export_writes_canonical_numbers_as_numbers_and_header_br_as_newline() {
     assert_eq!(r.get((1, 0)), Some(&Data::Float(12.0)));
     assert_eq!(r.get((1, 1)), Some(&Data::String("007".into())));
 }
+
+#[test]
+fn formatting_merges_above_below_or_right_of_data_are_ignored() {
+    let d = tempfile::tempdir().unwrap();
+    let blank = rust_xlsxwriter::Format::new();
+    let mut files = Vec::new();
+    for (name, (r1, c1, r2, c2)) in [
+        ("above", (0, 1, 0, 3)),
+        ("below", (8, 1, 12, 2)),
+        ("right", (2, 6, 5, 6)),
+        ("partly", (3, 2, 9, 2)),
+    ] {
+        let x = d.path().join(format!("{name}.xlsx"));
+        xlsx(&x, &[], |wb| {
+            let ws = wb.add_worksheet();
+            for r in 2..5u32 {
+                ws.write_string(r, 1, format!("k{r}")).unwrap();
+                ws.write_string(r, 2, format!("v{r}")).unwrap();
+            }
+            ws.merge_range(r1, c1, r2, c2, "", &blank).unwrap();
+        });
+        files.push(x);
+    }
+    // One run per file, so the equal tables are not duplicates.
+    let v: Vec<serde_json::Value> = files
+        .iter()
+        .map(|f| classify_json(std::slice::from_ref(f))[0].clone())
+        .collect();
+    for t in &v[..3] {
+        assert_eq!(t["rule"], "t1", "{t}");
+        assert_eq!(t["columns"], 2, "{t}");
+        assert_eq!(t["rows"], 2, "{t}");
+    }
+    // A merge that covers data cells is clipped to the data and still counts.
+    assert_eq!(v[3]["rule"], "t3", "{}", v[3]);
+    assert_eq!(v[3]["columns"], 2, "{}", v[3]);
+}
+
+const PNG: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+    0x42, 0x60, 0x82,
+];
+
+#[test]
+fn workbook_and_docx_images_are_t3() {
+    let d = tempfile::tempdir().unwrap();
+    let x = d.path().join("img.xlsx");
+    xlsx(&x, &[("S", rows(2))], |wb| {
+        let img = rust_xlsxwriter::Image::new_from_buffer(PNG).unwrap();
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .insert_image(5, 5, &img)
+            .unwrap();
+    });
+    let doc = d.path().join("img.docx");
+    docx(
+        &doc,
+        "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>k</w:t></w:r></w:p></w:tc></w:tr>\
+         <w:tr><w:tc><w:p><w:r><w:drawing/></w:r></w:p></w:tc></w:tr></w:tbl>",
+    );
+    let v = classify_json(&[x, doc]);
+    assert_eq!(v[0]["rule"], "t3", "{v}");
+    assert_eq!(v[0]["reasons"][0], "images");
+    assert_eq!(v[1]["rule"], "t3", "{v}");
+    assert_eq!(v[1]["reasons"][0], "images");
+}
+
+/// Writes a minimal ODS file whose `content.xml` body is `table`.
+fn ods(path: &Path, table: &str) {
+    let f = std::fs::File::create(path).unwrap();
+    let mut z = zip::ZipWriter::new(f);
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    z.start_file("mimetype", stored).unwrap();
+    write!(z, "application/vnd.oasis.opendocument.spreadsheet").unwrap();
+    z.start_file("META-INF/manifest.xml", stored).unwrap();
+    write!(
+        z,
+        r#"<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2"><manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.spreadsheet"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>"#
+    )
+    .unwrap();
+    z.start_file("content.xml", stored).unwrap();
+    write!(
+        z,
+        r#"<?xml version="1.0" encoding="UTF-8"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2"><office:body><office:spreadsheet>{table}</office:spreadsheet></office:body></office:document-content>"#
+    )
+    .unwrap();
+    z.finish().unwrap();
+}
+
+fn ods_cell(text: &str, attrs: &str) -> String {
+    format!(
+        r#"<table:table-cell office:value-type="string" {attrs}><text:p>{text}</text:p></table:table-cell>"#
+    )
+}
+
+#[test]
+fn ods_merged_data_cell_is_t3_and_merged_header_is_flattened() {
+    let d = tempfile::tempdir().unwrap();
+    let covered = "<table:covered-table-cell/>";
+    let head = d.path().join("head.ods");
+    ods(
+        &head,
+        &format!(
+            r#"<table:table table:name="S"><table:table-row>{}{covered}</table:table-row><table:table-row>{}{}</table:table-row></table:table>"#,
+            ods_cell("Both", r#"table:number-columns-spanned="2""#),
+            ods_cell("1", ""),
+            ods_cell("2", ""),
+        ),
+    );
+    let data = d.path().join("data.ods");
+    ods(
+        &data,
+        &format!(
+            r#"<table:table table:name="S"><table:table-row>{}{}</table:table-row><table:table-row>{}{}</table:table-row><table:table-row>{covered}{}</table:table-row></table:table>"#,
+            ods_cell("k", ""),
+            ods_cell("v", ""),
+            ods_cell("m", r#"table:number-rows-spanned="2""#),
+            ods_cell("1", ""),
+            ods_cell("2", ""),
+        ),
+    );
+    let v = classify_json(&[head.clone(), data.clone()]);
+    assert_eq!(v[0]["rule"], "t1", "{v}");
+    assert_eq!(v[1]["rule"], "t3", "{v}");
+    assert_eq!(v[1]["reasons"][0], "merged data cells");
+    let out = d.path().join("head.md");
+    tblctl()
+        .arg("import")
+        .arg(&head)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        "| Both | Both |\n|---|---|\n| 1 | 2 |\n"
+    );
+}
+
+#[test]
+fn ods_dates_import_as_iso() {
+    let d = tempfile::tempdir().unwrap();
+    let f = d.path().join("d.ods");
+    ods(
+        &f,
+        &format!(
+            r#"<table:table table:name="S"><table:table-row>{}{}</table:table-row><table:table-row><table:table-cell office:value-type="date" office:date-value="2024-03-15"><text:p>15/03/24</text:p></table:table-cell><table:table-cell office:value-type="date" office:date-value="2024-03-15T10:30:00"><text:p>x</text:p></table:table-cell></table:table-row></table:table>"#,
+            ods_cell("when", ""),
+            ods_cell("at", ""),
+        ),
+    );
+    let out = d.path().join("d.md");
+    tblctl()
+        .arg("import")
+        .arg(&f)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        "| when | at |\n|---|---|\n| 2024-03-15 | 2024-03-15 10:30:00 |\n"
+    );
+}
+
+#[test]
+fn import_of_a_t0_table_writes_nothing_and_exits_0() {
+    let d = tempfile::tempdir().unwrap();
+    let csv = d.path().join("rev.csv");
+    std::fs::write(&csv, "Version,Date,Author\n1,2020-01-01,me\n").unwrap();
+    let out = d.path().join("rev.md");
+    tblctl()
+        .arg("import")
+        .arg(&csv)
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(0)
+        .stdout(contains("T0  skip"))
+        .stdout(contains("nothing written"));
+    assert!(!out.exists());
+}
+
+#[test]
+fn export_refuses_its_input_and_a_non_xlsx_out() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "| a |\n|---|\n| 1 |\n").unwrap();
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&md)
+        .assert()
+        .code(2)
+        .stderr(contains("input file"));
+    assert_eq!(
+        std::fs::read_to_string(&md).unwrap(),
+        "| a |\n|---|\n| 1 |\n"
+    );
+    let csv = d.path().join("a.csv");
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&csv)
+        .assert()
+        .code(2)
+        .stderr(contains(".xlsx"));
+    assert!(!csv.exists());
+}
+
+fn sheets(path: &Path) -> Vec<(String, calamine::Range<calamine::Data>)> {
+    use calamine::Reader;
+    let mut wb = calamine::open_workbook_auto(path).unwrap();
+    wb.sheet_names()
+        .into_iter()
+        .map(|n| {
+            let r = wb.worksheet_range(&n).unwrap();
+            (n, r)
+        })
+        .collect()
+}
+
+#[test]
+fn export_reads_csv_and_writes_one_sheet_per_markdown_table() {
+    use calamine::Data;
+    let d = tempfile::tempdir().unwrap();
+    let csv = d.path().join("a.csv");
+    std::fs::write(&csv, "k,v\nx,1\n").unwrap();
+    let x = d.path().join("csv.xlsx");
+    tblctl()
+        .arg("export")
+        .arg(&csv)
+        .arg("--out")
+        .arg(&x)
+        .assert()
+        .code(0);
+    let s = sheets(&x);
+    assert_eq!(s.len(), 1);
+    assert_eq!(s[0].1.get((1, 0)), Some(&Data::String("x".into())));
+
+    let md = d.path().join("m.md");
+    std::fs::write(&md, "| a |\n|---|\n| 1 |\n\n| b |\n|---|\n| 2 |\n").unwrap();
+    let x = d.path().join("md.xlsx");
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&x)
+        .assert()
+        .code(0)
+        .stdout(contains("2 table(s)"));
+    let s = sheets(&x);
+    let names: Vec<&str> = s.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["Table1", "Table2"]);
+    assert_eq!(s[1].1.get((0, 0)), Some(&Data::String("b".into())));
+}
+
+#[test]
+fn export_fixes_the_creation_time() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "| a |\n|---|\n| 1 |\n").unwrap();
+    let x = d.path().join("a.xlsx");
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&x)
+        .assert()
+        .code(0);
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&x).unwrap()).unwrap();
+    let mut core = String::new();
+    std::io::Read::read_to_string(&mut zip.by_name("docProps/core.xml").unwrap(), &mut core)
+        .unwrap();
+    assert!(core.contains("2000-01-01T00:00:00Z"), "{core}");
+}
+
+#[test]
+fn imported_text_renders_literally_and_round_trips() {
+    let d = tempfile::tempdir().unwrap();
+    let csv = d.path().join("a.csv");
+    std::fs::write(&csv, "k,v\n<value>,*required*\n").unwrap();
+    let md = d.path().join("a.md");
+    tblctl()
+        .arg("import")
+        .arg(&csv)
+        .arg("--out")
+        .arg(&md)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&md).unwrap(),
+        "| k | v |\n|---|---|\n| \\<value\\> | \\*required\\* |\n"
+    );
+    let x = d.path().join("a.xlsx");
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&x)
+        .assert()
+        .code(0);
+    assert_eq!(
+        sheets(&x)[0].1.get((1, 0)),
+        Some(&calamine::Data::String("<value>".into()))
+    );
+}

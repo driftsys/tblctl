@@ -38,13 +38,28 @@ fn markdown_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
         .collect())
 }
 
-/// Replaces each `<br>`, `<br/>` or `<br />` (any case) with a newline.
-fn br_to_newline(cell: &str) -> String {
+/// Replaces each `<br>`, `<br/>` or `<br />` (any case) with a newline and
+/// removes the backslash of each CommonMark backslash escape (a backslash
+/// before ASCII punctuation).
+fn unescape_cell(cell: &str) -> String {
     let mut out = String::with_capacity(cell.len());
     let mut rest = cell;
-    while let Some(i) = rest.find('<') {
+    while let Some(i) = rest.find(['<', '\\']) {
         out.push_str(&rest[..i]);
         let tail = &rest[i..];
+        if let Some(rest_after) = tail.strip_prefix('\\') {
+            match rest_after.chars().next() {
+                Some(c) if c.is_ascii_punctuation() => {
+                    out.push(c);
+                    rest = &rest_after[1..];
+                }
+                _ => {
+                    out.push('\\');
+                    rest = rest_after;
+                }
+            }
+            continue;
+        }
         let end = tail.find('>').map(|e| e + 1);
         let tag = end.map(|e| tail[..e].to_ascii_lowercase().replace(' ', ""));
         match (end, tag.as_deref()) {
@@ -62,13 +77,14 @@ fn br_to_newline(cell: &str) -> String {
     out
 }
 
-/// Converts a parsed Markdown table to a grid. `<br>` becomes a newline.
+/// Converts a parsed Markdown table to a grid. `<br>` becomes a newline and
+/// backslash escapes are removed.
 pub fn markdown_grid(file: &str, t: markdown::Table) -> Grid {
     let mut rows = vec![t.header];
     rows.extend(t.rows);
     let rows = rows
         .into_iter()
-        .map(|r| r.iter().map(|c| br_to_newline(c)).collect())
+        .map(|r| r.iter().map(|c| unescape_cell(c)).collect())
         .collect();
     Grid {
         file: file.to_string(),
@@ -113,6 +129,12 @@ fn cell_text(d: &Data) -> String {
             Some(t) => t.format("%Y-%m-%d %H:%M:%S").to_string(),
             None => d.to_string(),
         },
+        // ODS dates: `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS`.
+        Data::DateTimeIso(s) => match s.split_once('T') {
+            Some((date, "00:00:00")) => date.to_string(),
+            Some((date, time)) => format!("{date} {time}"),
+            None => s.clone(),
+        },
         other => other.to_string(),
     }
 }
@@ -131,6 +153,10 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
         .map(|p| p.sheet_name)
         .collect();
     let any_unmatched_picture = pictures.iter().any(String::is_empty);
+    let mut ods_merges = match wb {
+        Sheets::Ods(_) => ods::merges(path).with_context(|| file.to_string())?,
+        _ => Default::default(),
+    };
     let mut out = Vec::new();
     for name in &visible {
         let range = wb
@@ -145,22 +171,28 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
             .worksheet_formula(name)
             .map(|f| f.used_cells().any(|(_, _, s)| !s.is_empty()))
             .unwrap_or(false);
-        let merges = merges(&mut wb, name);
+        let merges = match &wb {
+            Sheets::Ods(_) => ods_merges.remove(name).unwrap_or_default(),
+            _ => merges(&mut wb, name),
+        };
+        let (r1, c1) = range.end().unwrap_or((0, 0));
         let mut data_merges = false;
         for m in &merges {
-            // A merge outside the used range (formatting only) holds no data.
-            if m.end.0 < r0 || m.end.1 < c0 {
+            // A merge wholly outside the used range (formatting only) holds
+            // no data; a merge partly outside is clipped to the range.
+            if range.is_empty() || m.end.0 < r0 || m.end.1 < c0 || m.start.0 > r1 || m.start.1 > c1
+            {
                 continue;
             }
             let (sr, sc) = (
-                m.start.0.saturating_sub(r0) as usize,
-                m.start.1.saturating_sub(c0) as usize,
+                (m.start.0.max(r0) - r0) as usize,
+                (m.start.1.max(c0) - c0) as usize,
             );
             let (er, ec) = (
-                m.end.0.saturating_sub(r0) as usize,
-                m.end.1.saturating_sub(c0) as usize,
+                (m.end.0.min(r1) - r0) as usize,
+                (m.end.1.min(c1) - c0) as usize,
             );
-            if er > 0 && (sr..=er).any(|r| r > 0) {
+            if er > 0 {
                 data_merges = true;
             }
             // Flatten by repeating the top-left value over the merged range.
@@ -170,9 +202,6 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
                 .cloned()
                 .unwrap_or_default();
             for row in rows.iter_mut().take(er + 1).skip(sr) {
-                if row.len() <= ec {
-                    row.resize(ec + 1, String::new());
-                }
                 for cell in row.iter_mut().take(ec + 1).skip(sc) {
                     cell.clone_from(&value);
                 }
@@ -198,7 +227,8 @@ fn merges<RS: std::io::Read + std::io::Seek>(wb: &mut Sheets<RS>, name: &str) ->
     match wb {
         Sheets::Xlsx(x) => x.merge_cells_by_sheet_name(name).unwrap_or_default(),
         Sheets::Xls(x) => x.merge_cells_by_sheet_name(name).unwrap_or_default(),
-        // XLSB and ODS readers do not expose merged ranges.
+        // The XLSB reader does not expose merged ranges; ODS is read by
+        // `ods::merges`.
         _ => Vec::new(),
     }
 }
@@ -220,6 +250,95 @@ fn docx_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
             facts,
         })
         .collect())
+}
+
+mod ods {
+    use anyhow::Result;
+    use calamine::Dimensions;
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+    use std::collections::HashMap;
+    use std::io::Read as _;
+    use std::path::Path;
+
+    fn number(e: &quick_xml::events::BytesStart, key: &str) -> u32 {
+        e.attributes()
+            .flatten()
+            .find(|a| a.key.as_ref() == key)
+            .and_then(|a| a.value.parse().ok())
+            .unwrap_or(1)
+    }
+
+    /// Merged ranges of each sheet of an ODS file, read from `content.xml`
+    /// (`table:number-rows-spanned` and `table:number-columns-spanned`), in
+    /// the same absolute positions calamine uses.
+    pub fn merges(path: &Path) -> Result<HashMap<String, Vec<Dimensions>>> {
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(path)?)?;
+        let mut xml = String::new();
+        zip.by_name("content.xml")?.read_to_string(&mut xml)?;
+        let mut reader = Reader::from_str(&xml);
+        let mut out: HashMap<String, Vec<Dimensions>> = HashMap::new();
+        let mut sheet = String::new();
+        let (mut row, mut col, mut row_repeat) = (0u32, 0u32, 1u32);
+        loop {
+            let event = reader.read_event()?;
+            let empty = matches!(event, Event::Empty(_));
+            match event {
+                Event::Eof => break,
+                Event::Start(e) | Event::Empty(e) => match e.name().as_ref() {
+                    "table:table" => {
+                        sheet = e
+                            .attributes()
+                            .flatten()
+                            .find(|a| a.key.as_ref() == "table:name")
+                            .map(|a| a.value.into_owned())
+                            .unwrap_or_default();
+                        row = 0;
+                    }
+                    "table:table-row" => {
+                        col = 0;
+                        row_repeat = number(&e, "table:number-rows-repeated");
+                        if empty {
+                            row = row.saturating_add(row_repeat);
+                        }
+                    }
+                    name @ ("table:table-cell" | "table:covered-table-cell") => {
+                        if name == "table:table-cell" {
+                            let rows = number(&e, "table:number-rows-spanned");
+                            let cols = number(&e, "table:number-columns-spanned");
+                            if rows > 1 || cols > 1 {
+                                out.entry(sheet.clone()).or_default().push(Dimensions::new(
+                                    (row, col),
+                                    (row.saturating_add(rows - 1), col.saturating_add(cols - 1)),
+                                ));
+                            }
+                        }
+                        col = col.saturating_add(number(&e, "table:number-columns-repeated"));
+                    }
+                    _ => {}
+                },
+                Event::End(e) if e.name().as_ref() == "table:table-row" => {
+                    row = row.saturating_add(row_repeat);
+                }
+                _ => {}
+            }
+        }
+        Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn markdown_cells_are_unescaped_and_br_becomes_a_newline() {
+        let t = markdown::tables("| a |\n|---|\n| \\<v\\> \\*r\\* a\\\\b \\q 1<br>2 \\<br> |\n")
+            .pop()
+            .unwrap();
+        let g = markdown_grid("f.md", t);
+        assert_eq!(g.rows[1], ["<v> *r* a\\b \\q 1\n2 <br>"]);
+    }
 }
 
 mod docx {
@@ -251,7 +370,9 @@ mod docx {
         let mut vmerge_continue = false;
         let mut cell_starts_par = true;
         loop {
-            match reader.read_event()? {
+            let event = reader.read_event()?;
+            let empty = matches!(event, Event::Empty(_));
+            match event {
                 Event::Eof => break,
                 Event::Start(e) | Event::Empty(e) if depth > 0 || e.name().as_ref() == "w:tbl" => {
                     match e.name().as_ref() {
@@ -284,7 +405,11 @@ mod docx {
                             }
                             cell_starts_par = false;
                         }
-                        "w:t" => in_text = true,
+                        "w:t" if !empty => in_text = true,
+                        "w:br" => cell.push('\n'),
+                        // A tab stop definition in `w:tabs` has `w:val`; a tab
+                        // character in a run does not.
+                        "w:tab" if attr(&e, "w:val").is_none() => cell.push('\t'),
                         "w:drawing" | "w:pict" => facts.images = true,
                         _ => {}
                     }
@@ -358,6 +483,34 @@ mod docx {
             assert_eq!(t.len(), 1);
             assert_eq!(t[0].0, [vec!["H", "H"], vec!["a & b\nc", "d"]]);
             assert!(!t[0].1.data_merges);
+        }
+
+        #[test]
+        fn breaks_tabs_and_empty_text() {
+            let xml = r#"<w:tbl>
+                <w:tr><w:tc><w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr><w:r><w:t>h</w:t></w:r></w:p></w:tc></w:tr>
+                <w:tr><w:tc><w:p><w:r><w:t>first</w:t><w:br/><w:t>second</w:t><w:tab/><w:t>third</w:t><w:t/></w:r>junk</w:p></w:tc></w:tr>
+                </w:tbl>"#;
+            let t = parse(xml).unwrap();
+            assert_eq!(t[0].0, [vec!["h"], vec!["first\nsecond\tthird"]]);
+        }
+
+        #[test]
+        fn horizontal_merge_in_a_body_row_is_a_data_merge() {
+            let xml = r#"<w:tbl>
+                <w:tr><w:tc><w:p/></w:tc><w:tc><w:p/></w:tc></w:tr>
+                <w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr>
+                </w:tbl>"#;
+            let t = parse(xml).unwrap();
+            assert_eq!(t[0].0[1], ["x", "x"]);
+            assert!(t[0].1.data_merges);
+        }
+
+        #[test]
+        fn drawing_marks_images() {
+            let xml =
+                r#"<w:tbl><w:tr><w:tc><w:p><w:r><w:drawing/></w:r></w:p></w:tc></w:tr></w:tbl>"#;
+            assert!(parse(xml).unwrap()[0].1.images);
         }
 
         #[test]
