@@ -236,6 +236,8 @@ mod tests {
             (&["Date", "Description"][..], Rule::T0),
             (&["Release date", "Modification"][..], Rule::T0),
             (&["DATE", "AUTHOR"][..], Rule::T0),
+            (&["Author", "Date"][..], Rule::T0),
+            (&["Date:", "Author(s)"][..], Rule::T0),
             (&["Update", "Description"][..], Rule::T1),
             (&["Date", "Value"][..], Rule::T1),
             (&["Author", "Name"][..], Rule::T1),
@@ -254,6 +256,7 @@ mod tests {
         let mut a = grid(&[&["a"], &["1"]]);
         a.name = "first".into();
         let mut b = grid(&[&["a"], &["1"]]);
+        b.file = "g".into();
         b.name = "second".into();
         let v = classify(&[a, b], &LIMITS);
         assert_eq!(v[1].reasons, ["duplicate of f#first"]);

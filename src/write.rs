@@ -219,6 +219,14 @@ mod tests {
     }
 
     #[test]
+    fn link_escapes_an_opening_bracket_in_the_sheet_name() {
+        let mut g = grid(&[&["a"], &["1"]]);
+        g.name = "[A".into();
+        let s = link_stub(&g, Path::new("/r/a.xlsx"), Path::new("/r/t.md")).unwrap();
+        assert_eq!(s, "[a.xlsx — \\[A, 1 rows × 1 columns](a.xlsx)\n");
+    }
+
+    #[test]
     fn link_is_relative_to_the_output_file() {
         let g = grid(&[&["a"], &["1"], &["2"]]);
         let s = link_stub(
