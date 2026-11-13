@@ -213,6 +213,9 @@ fn import_table(
     let verdict = rules::classify(std::slice::from_ref(&grid), limits)
         .pop()
         .expect("one verdict per grid");
+    // An empty table has nothing to write, so `--as` does not apply to it.
+    let empty = grid.rows.iter().flatten().all(|c| c.trim().is_empty());
+    let forced = if empty { None } else { forced };
     let target = forced.unwrap_or(verdict.rule.target());
     let mut reasons = verdict.reasons;
     if forced.is_some() {
@@ -233,9 +236,10 @@ fn import_table(
     let ext = out.extension().and_then(|e| e.to_str()).unwrap_or("");
     if !ext.eq_ignore_ascii_case(expected) {
         let by = match forced {
+            Some(Target::Markdown) => "--as md".to_string(),
             Some(Target::Csv) => "--as csv".to_string(),
             Some(Target::Link) => "--as link".to_string(),
-            Some(_) => "--as md".to_string(),
+            Some(Target::Skip) => unreachable!("--as cannot select skip"),
             None => format!("rule {}", rule_label(verdict.rule)),
         };
         return Err(Error::WrongExtension {

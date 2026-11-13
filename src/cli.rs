@@ -57,7 +57,7 @@ pub enum Command {
         #[command(flatten)]
         limits: LimitArgs,
     },
-    /// Import a table as Markdown, CSV or a link stub, as its rule selects
+    /// Import a table as Markdown, CSV or a link stub (the rule selects, or --as)
     #[command(after_help = "Examples:
   tblctl import att/limits.xlsx --out docs/limits.md
   tblctl import att/limits.xlsx --sheet Limits --out docs/limits.md
