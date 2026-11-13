@@ -1,6 +1,6 @@
 [package]
 name = "tblctl"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 description = "Hermetic CLI that converts and checks tables for Markdown docs (XLSX/XLS/XLSB/ODS/DOCX/CSV/Markdown)"
 license = "MIT"
