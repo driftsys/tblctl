@@ -1,8 +1,12 @@
 use assert_cmd::Command;
 use predicates::str::contains;
 
+/// The binary, with the colour variables of the parent environment removed so
+/// that text output is plain unless a test sets them.
 fn tblctl() -> Command {
-    Command::cargo_bin("tblctl").unwrap()
+    let mut cmd = Command::cargo_bin("tblctl").unwrap();
+    cmd.env_remove("CLICOLOR_FORCE").env_remove("NO_COLOR");
+    cmd
 }
 
 #[test]
