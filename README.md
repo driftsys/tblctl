@@ -74,11 +74,11 @@ T2  csv      att/limits.xlsx#Limits  40×2  rows 40 > 30
 ```
 
 `import` writes the format the rule selects; `--as md|csv|link` forces a format
-instead. `--out` must end in `.md` (Markdown or link) or `.csv` (CSV). `--sheet`
-selects a table when the input has several (a sheet name, `line N` for Markdown,
-`table N` for DOCX). `import` and `export` write their status line
-(`T1  markdown a.xlsx#S  -> out.md`) to stderr; their output is the file, so
-stdout stays empty.
+instead (an empty table is never written). `--out` must end in `.md` (Markdown
+or link) or `.csv` (CSV). `--sheet` selects a table when the input has several
+(a sheet name, `line N` for Markdown, `table N` for DOCX). `import` and `export`
+write their status line (`T1  markdown a.xlsx#S  -> out.md`) to stderr; their
+output is the file, so stdout stays empty.
 
 `check` prints one line per pipe table outside code blocks and HTML comments:
 

@@ -938,6 +938,15 @@ fn import_as_forces_the_format_and_keeps_the_rule() {
     let text = std::fs::read_to_string(&md).unwrap();
     assert!(text.starts_with("| id | name |\n"));
     assert_eq!(text.lines().count(), 42);
+    tblctl()
+        .arg("import")
+        .arg(&large)
+        .args(["--as", "md"])
+        .arg("--out")
+        .arg(d.path().join("again.md"))
+        .assert()
+        .code(0)
+        .stderr(contains("T2  markdown "));
 }
 
 #[test]
@@ -1179,9 +1188,21 @@ fn import_as_never_writes_an_empty_table() {
     ]);
     assert_eq!(code, Some(0));
     assert_eq!(v["results"][0]["rule"], "t0");
+    assert_eq!(v["results"][0]["target"], "skip");
     assert!(v["results"][0]["out"].is_null());
     assert_eq!(v["results"][0]["reasons"], serde_json::json!(["empty"]));
     assert_eq!(v["summary"]["written"], 0);
+    assert!(!md.exists());
+    // The extension is not checked: nothing is forced into a file.
+    tblctl()
+        .arg("import")
+        .arg(&empty)
+        .args(["--as", "csv"])
+        .arg("--out")
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stderr(contains("nothing written"));
     assert!(!md.exists());
     tblctl()
         .arg("import")

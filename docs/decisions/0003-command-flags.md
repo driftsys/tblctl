@@ -27,8 +27,9 @@ to T3 already choose the output format for an imported table.
   table that the rule sends to CSV, for example a 40-row table, into Markdown).
   Without `--as`, the rule decides. With `--as`, the result keeps the computed
   `rule`, `target` is the forced format, `reasons` ends with
-  `target forced by --as`, and a T0 table is written too, except an empty table,
-  which is never written.
+  `target forced by --as`, and a T0 table is written too. An empty table ignores
+  `--as`: nothing is written, `target` stays `skip`, `reasons` is `["empty"]`
+  and the `--out` extension is not checked.
 
 `import` and `export` convert one file, so they take a single input.
 `import --sheet` selects one table when the input has several.
