@@ -1,9 +1,9 @@
 # tblctl
 
 A hermetic, cross-platform CLI for tables in Markdown docs (GitLab, GitHub,
-mdbook): it classifies tables from XLSX/XLS/ODS/DOCX/CSV sources, imports them
-as a Markdown table, a diffable CSV or a link stub, checks Markdown tables
-against size limits, and exports back to XLSX.
+mdbook): it classifies tables from XLSX/XLS/XLSB/ODS/DOCX/CSV/Markdown sources,
+imports them as a Markdown table, a diffable CSV or a link stub, checks Markdown
+tables against size limits, and exports back to XLSX.
 
 > **Status: early development.** All four commands work. Cell colour is not yet
 > detected. Scope and rules are tracked in
@@ -83,6 +83,9 @@ results into failures once a check can report `REVIEW`.
 
 `export` writes each table of a Markdown or CSV file to one sheet of an XLSX
 file. The output is byte-identical for the same input.
+
+Merged data cells are detected in XLSX, XLS, ODS and DOCX, not in XLSB. Images
+are detected in XLSX and DOCX, not in XLS, XLSB or ODS.
 
 The T1 limits are 30 data rows, 8 columns and 120 characters per cell. In
 Markdown, a link counts as its text only. `--max-rows`, `--max-cols` and

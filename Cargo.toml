@@ -2,7 +2,7 @@
 name = "tblctl"
 version = "0.0.1"
 edition = "2021"
-description = "Hermetic CLI that converts and checks tables for Markdown docs (XLSX/DOCX/CSV)"
+description = "Hermetic CLI that converts and checks tables for Markdown docs (XLSX/XLS/XLSB/ODS/DOCX/CSV/Markdown)"
 license = "MIT"
 repository = "https://github.com/driftsys/tblctl"
 readme = "README.md"

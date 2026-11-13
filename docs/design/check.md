@@ -15,10 +15,17 @@ As-built description of the T1 size check. Decisions that bind it are in
 
 ## Table detection
 
-- Tables inside fenced or indented code blocks are skipped.
+- A leading UTF-8 byte order mark is ignored.
+- Tables inside fenced or indented code blocks and inside HTML comments
+  (`<!-- ... -->`, on one or more lines) are skipped. A tab counts as 4 columns
+  of indentation, so a tab-indented table is indented code.
+- Tables inside block quotes (`>`, nested too) are found; the reported line is
+  the line in the file.
 - The header and delimiter rows must have the same number of cells.
 - Body rows are cut or padded to the header's cell count; the table ends at a
-  blank line or at the start of another block.
+  blank line, at a change of block-quote depth, or at the start of another
+  block: a heading, a fence, an HTML block (a line starting with `<`), a list
+  item (`-`, `*`, `+`, `N.` or `N)`) or a thematic break (`***`, `---`, `___`).
 - `\|` is an escaped pipe inside a cell.
 
 ## Measures
@@ -27,7 +34,9 @@ As-built description of the T1 size check. Decisions that bind it are in
 - Columns: the number of header cells.
 - Cell length: characters of the trimmed Markdown source, header included. A
   link or image `[text](url)` counts as `text` only, and each `<br>` counts as
-  one character (a line break).
+  one character (a line break). An escaped pipe `\|` counts as 1 character. Text
+  inside a code span and a backslash escape such as `\[` are counted as written,
+  so a link inside them is not reduced to its text.
 
 A table fails when rows, columns or the longest cell exceed `--max-rows`,
 `--max-cols` or `--max-cell`. Each exceeded limit adds one reason, such as
@@ -50,4 +59,6 @@ not an error.
 
 ## Not built
 
-No check reports `REVIEW`; `--strict` is accepted and has no effect.
+- No check reports `REVIEW`; `--strict` is accepted and has no effect.
+- A table inside a list item, indented 4 or more spaces, is treated as indented
+  code and is not checked.
