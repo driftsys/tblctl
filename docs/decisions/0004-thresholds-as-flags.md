@@ -13,17 +13,16 @@ limits, and the way to configure them must stay small for v0.1.
 
 ## Decision
 
-`check` and `classify` take the T1 thresholds as flags only:
+`check`, `classify` and `import` take the T1 thresholds as flags only:
 
 - `--max-rows`, default 30 data rows.
 - `--max-cols`, default 8 columns.
-- `--max-cell`, default 120 characters.
+- `--max-cell`, default 120 characters. In Markdown cells, a link or image
+  `[text](url)` counts as `text` only, because spec tables often hold links
+  whose URLs the reader does not see.
 
 There is no configuration file. A project that needs other values passes the
 flags from a `just` recipe or from CI.
-
-Implementation status: the three flags are built on `check`. `classify` does not
-take them yet.
 
 ## Consequences
 

@@ -5,9 +5,9 @@ mdbook): it classifies tables from XLSX/XLS/ODS/DOCX/CSV sources, imports them
 as a Markdown table, a diffable CSV or a link stub, checks Markdown tables
 against size limits, and exports back to XLSX.
 
-> **Status: early development.** `check` works. `classify`, `import` and
-> `export` are stubbed and exit `2` with "not yet implemented". Scope and rules
-> are tracked in **[#1](https://github.com/driftsys/tblctl/issues/1)**.
+> **Status: early development.** All four commands work. Cell colour is not yet
+> detected. Scope and rules are tracked in
+> **[#1](https://github.com/driftsys/tblctl/issues/1)**.
 
 Siblings: [`diagctl`](https://github.com/driftsys/diagctl) (SVG diagrams) and
 [`pixctl`](https://github.com/driftsys/pixctl) (raster images).
@@ -45,9 +45,30 @@ cargo install tblctl
 
 ## Usage
 
+Inputs: XLSX, XLSM, XLS, XLSB, ODS, DOCX, CSV and Markdown.
+
 ```sh
-tblctl check docs/*.md
+tblctl classify att/*.xlsx att/*.docx     # which rule applies to each table
+tblctl import att/limits.xlsx --sheet Limits --out docs/limits.md
+tblctl check docs/*.md                    # lint Markdown tables
+tblctl export docs/limits.md --out limits.xlsx
 ```
+
+Rules, first match wins:
+
+| Rule | Target   | When                                                                       |
+| ---- | -------- | -------------------------------------------------------------------------- |
+| T0   | skip     | empty, duplicate of an earlier table, or a revision history                |
+| T1   | Markdown | within the size limits, one visible sheet, no merged data cells, no images |
+| T2   | CSV      | larger, one visible sheet, no merged data cells, no images, no formulas    |
+| T3   | link     | everything else: a one-line link to the source with sheet and size         |
+
+`classify` prints one line per table, or with `--json` an array of objects
+(`file`, `table`, `rule`, `target`, `rows`, `columns`, `reasons`).
+
+`import` writes the format the rule selects; `--out` must end in `.md` (T1, T3)
+or `.csv` (T2). `--sheet` selects a table when the input has several (a sheet
+name, `line N` for Markdown, `table N` for DOCX).
 
 `check` prints one line per pipe table outside code blocks:
 
@@ -56,11 +77,16 @@ PASS    [T1] docs/spec.md:12  3×4
 FAIL    [T1] docs/spec.md:40  45×6 rows 45 > 30; suggest CSV
 ```
 
-The T1 limits are 30 data rows, 8 columns and 120 characters per cell (counted
-in the Markdown source). `--max-rows`, `--max-cols` and `--max-cell` change
-them. `--json` prints an array with one object per table (`file`, `line`,
-`status`, `rule`, `rows`, `columns`, `reasons`). `--strict` is accepted; it will
-turn `REVIEW` results into failures once a check can report `REVIEW`.
+`check --json` prints an array of objects (`file`, `line`, `status`, `rule`,
+`rows`, `columns`, `reasons`). `--strict` is accepted; it will turn `REVIEW`
+results into failures once a check can report `REVIEW`.
+
+`export` writes each table of a Markdown or CSV file to one sheet of an XLSX
+file. The output is byte-identical for the same input.
+
+The T1 limits are 30 data rows, 8 columns and 120 characters per cell. In
+Markdown, a link counts as its text only. `--max-rows`, `--max-cols` and
+`--max-cell` change the limits on `classify`, `import` and `check`.
 
 ## License
 

@@ -20,9 +20,8 @@ to T3 already choose the output format for an imported table.
 - Commands that report results accept many input files.
 - There is no `--target` flag. The rules T0 to T3 choose the output format.
 
-Implementation status: `check` has `--json`, `--strict` and many inputs.
-`classify` declares `--json` and many inputs in its argument definition but is a
-stub. `import` and `export` take a single file.
+`import` and `export` convert one file, so they take a single input.
+`import --sheet` selects one table when the input has several.
 
 ## Consequences
 

@@ -25,16 +25,14 @@ Each object has the fields `file`, `table`, `rule`, `target`, `rows`, `columns`
 and `reasons`. For example, `rule` is `"t2"`, `target` is `"csv"` and `reasons`
 is `["rows 120 > 30"]`.
 
-Implementation status: agreed, not implemented. `classify` is a stub that exits
-2 with "not yet implemented". The field list above is the agreed shape, not
-as-built behaviour. The built `check --json` output (AD-0001) already follows
-the array, lowercase and ordering rules.
+`target` is one of `skip` (T0), `markdown` (T1), `csv` (T2) and `link` (T3).
+`table` is the sheet name for workbooks, `line N` for Markdown, `table N` for
+DOCX and `data` for CSV.
 
 ## Consequences
 
 - Consumers can use one parser for tblctl and pixctl output.
-- The shape of `classify --json` is fixed before the command is built; changing
-  it later edits this record.
+- Changing the shape of `classify --json` edits this record.
 
 Satisfies: [issue #1](https://github.com/driftsys/tblctl/issues/1) Related:
 AD-0003

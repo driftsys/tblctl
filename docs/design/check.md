@@ -25,7 +25,9 @@ As-built description of the T1 size check. Decisions that bind it are in
 
 - Rows: data rows only. The header and the delimiter row are not counted.
 - Columns: the number of header cells.
-- Cell length: characters of the trimmed Markdown source, header included.
+- Cell length: characters of the trimmed Markdown source, header included. A
+  link or image `[text](url)` counts as `text` only, and each `<br>` counts as
+  one character (a line break).
 
 A table fails when rows, columns or the longest cell exceed `--max-rows`,
 `--max-cols` or `--max-cell`. Each exceeded limit adds one reason, such as
