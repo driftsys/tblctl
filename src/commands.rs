@@ -181,6 +181,13 @@ pub fn export(file: &Path, out: &Path) -> Result<i32> {
     if same_file(file, out) {
         bail!("{}: --out is the input file", out.display());
     }
+    let out_ext = out.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !out_ext.eq_ignore_ascii_case("xlsx") {
+        bail!(
+            "{}: export writes XLSX; use an --out path ending in .xlsx",
+            out.display()
+        );
+    }
     let grids = read::tables(file)?;
     if grids.is_empty() {
         bail!("{}: no table found", file.display());
