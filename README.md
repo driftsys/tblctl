@@ -140,7 +140,7 @@ tblctl classify --json spec.md missing.xlsx
   "errors": [
     {
       "code": "read_failed",
-      "message": "missing.xlsx: Xlsx error: I/O error: No such file or directory (os error 2): ...",
+      "message": "missing.xlsx: Xlsx error: I/O error: No such file or directory (os error 2)",
       "file": "missing.xlsx"
     }
   ]

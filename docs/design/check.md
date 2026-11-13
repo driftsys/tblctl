@@ -10,9 +10,11 @@ As-built description of the T1 size check. Decisions that bind it are in
 
 - `src/markdown.rs` finds GitHub-flavoured Markdown pipe tables in a document
   and returns them in document order.
-- `src/check.rs` evaluates each table against the limits, renders the result and
-  computes the exit code.
-- `src/cli.rs` defines the arguments; `src/main.rs` maps an error to exit 2.
+- `src/check.rs` evaluates each table against the limits and renders the result.
+- `src/output.rs` (`finish`) writes the output and computes the exit code: 2 if
+  any file cannot be read, otherwise 1 if any table failed, otherwise 0.
+- `src/cli.rs` defines the arguments; `src/main.rs` exits with the code that
+  `finish` returns.
 
 ## Table detection
 
@@ -50,9 +52,9 @@ A table fails when rows, columns or the longest cell exceed `--max-rows`,
 Text: one line per table, as in AD-0001, with the detail `rows×columns` and, on
 failure, the reasons followed by `suggest CSV`. A last line gives the totals:
 `N tables: P passed, F failed` (`0 tables: 0 passed, 0 failed` when there is no
-table, `1 table: …` for one). `PASS` is green and `FAIL` red when stdout is a
-terminal or `CLICOLOR_FORCE` is set, and never when `NO_COLOR` is set
-(`src/output.rs`).
+table, `1 table: …` for one). The summary line is left out when no file can be
+read. `PASS` is green and `FAIL` red when stdout is a terminal or
+`CLICOLOR_FORCE` is set, and never when `NO_COLOR` is set (`src/output.rs`).
 
 `--json` prints the envelope of AD-0005 with schema `tblctl/check/v1`. `results`
 has one object per table, in input order then document order. Fields: `file`,

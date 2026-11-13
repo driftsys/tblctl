@@ -10,7 +10,7 @@ Instructions for AI coding agents working in this repository.
 [#1](https://github.com/driftsys/tblctl/issues/1).
 
 Rust 2021, `clap` derive. Exit contract: `0` clean · `1` ≥1 check failed · `2`
-operational error (`main.rs` maps `Err` → 2).
+operational error (`src/output.rs` `finish` computes the code).
 
 ## Build commands
 

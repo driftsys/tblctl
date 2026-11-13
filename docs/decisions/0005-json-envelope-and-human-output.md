@@ -63,7 +63,7 @@ Human output:
   ends with a link to the README.
 - `check` text output ends with `N tables: P passed, F failed`; `classify` text
   output ends with `N tables: a T0, b T1, c T2, d T3`. One table is written
-  `1 table`.
+  `1 table`. When every input fails to read, the summary line is left out.
 - The state word of `check` (`PASS` green, `FAIL` red) and the rule of
   `classify` (T0 dim, T1 and T2 green, T3 yellow) are coloured only when stdout
   is a terminal. `NO_COLOR` with a non-empty value turns colour off;
@@ -73,8 +73,9 @@ Human output:
 - `import` and `export` write their status line to stderr. Their output is the
   file, so stdout stays empty in text mode.
 
-This decision supersedes the array shape of AD-0002 and the JSON form of `check`
-referenced by AD-0001. pixctl and diagctl are asked to adopt the same envelope.
+This decision supersedes the JSON shape of AD-0002 (the bare array and the
+stderr-only read errors) and the JSON form of `check` referenced by AD-0001.
+pixctl and diagctl are asked to adopt the same envelope.
 
 ## Consequences
 

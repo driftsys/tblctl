@@ -1,9 +1,9 @@
 # AD-0002: `classify --json` shape
 
-Superseded in part by [AD-0005](0005-json-envelope-and-human-output.md): the
-array described here is now the `results` field of a JSON envelope, and read
-errors are entries of its `errors` field. The object fields, enum values and
-order below still apply.
+Superseded by [AD-0005](0005-json-envelope-and-human-output.md) for the JSON
+shape: the bare array and the stderr-only read errors of this record are
+replaced by the JSON envelope. The result objects described under "Still in
+force" are the `results` field of that envelope.
 
 ## Context
 
@@ -19,10 +19,18 @@ inputs. Its JSON output should be read by the same tooling that reads pixctl
 
 ## Decision
 
-`classify --json` follows the pixctl `inspect --json` convention:
+Superseded by AD-0005:
 
-- A pretty-printed JSON array with one object per table.
-- An input that fails to read produces an error on stderr and no object.
+- `classify --json` printed a pretty-printed JSON array with one object per
+  table. AD-0005 replaces the array with an envelope whose `results` field holds
+  these objects.
+- An input that failed to read produced an error on stderr only. AD-0005 also
+  reports it as an entry of the envelope's `errors` field.
+
+Still in force:
+
+- One result object per table, and no result object for an input that fails to
+  read.
 - Enum values are lowercase.
 - Order is deterministic: input order, then document order.
 
@@ -36,8 +44,8 @@ DOCX and `data` for CSV.
 
 ## Consequences
 
-- Consumers can use one parser for tblctl and pixctl output.
-- Changing the shape of `classify --json` edits this record.
+- A change to the result object fields edits this record; a change to the
+  envelope edits AD-0005.
 
 Satisfies: [issue #1](https://github.com/driftsys/tblctl/issues/1) Related:
 AD-0003, AD-0005
