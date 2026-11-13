@@ -1003,3 +1003,209 @@ fn import_as_writes_a_t0_table() {
         .unwrap()
         .starts_with("| Version | Date | Author |"));
 }
+
+/// Runs `import` with `--json` and returns the exit code, the envelope and
+/// stderr.
+fn import_json(args: &[&Path]) -> (Option<i32>, serde_json::Value, String) {
+    let out = tblctl()
+        .arg("import")
+        .arg("--json")
+        .args(args)
+        .output()
+        .unwrap();
+    let v = serde_json::from_slice(&out.stdout).unwrap();
+    (
+        out.status.code(),
+        v,
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn import_without_as_names_the_rule_in_the_extension_error() {
+    let d = tempfile::tempdir().unwrap();
+    let large = d.path().join("large.xlsx");
+    xlsx(&large, &[("L", rows(40))], |_| {});
+    tblctl()
+        .arg("import")
+        .arg(&large)
+        .arg("--out")
+        .arg(d.path().join("large.md"))
+        .assert()
+        .code(2)
+        .stderr(contains("rule T2 writes csv"));
+}
+
+#[test]
+fn import_as_link_and_md_name_the_flag_in_the_extension_error() {
+    let d = tempfile::tempdir().unwrap();
+    let small = d.path().join("small.xlsx");
+    xlsx(&small, &[("S", rows(1))], |_| {});
+    for (flag, label) in [("link", "--as link"), ("md", "--as md")] {
+        let wrong = d.path().join(format!("{flag}.csv"));
+        tblctl()
+            .arg("import")
+            .arg(&small)
+            .args(["--as", flag])
+            .arg("--out")
+            .arg(&wrong)
+            .assert()
+            .code(2)
+            .stderr(contains(label))
+            .stderr(contains("use an --out path ending in .md"));
+        assert!(!wrong.exists());
+    }
+}
+
+#[test]
+fn import_as_reports_the_wrong_extension_as_json() {
+    let d = tempfile::tempdir().unwrap();
+    let small = d.path().join("small.xlsx");
+    xlsx(&small, &[("S", rows(1))], |_| {});
+    let wrong = d.path().join("small.md");
+    let (code, v, _) = import_json(&[
+        &small,
+        Path::new("--as"),
+        Path::new("csv"),
+        Path::new("--out"),
+        &wrong,
+    ]);
+    assert_eq!(code, Some(2));
+    assert_eq!(v["errors"][0]["code"], "wrong_extension");
+    assert_eq!(v["errors"][0]["expected"], "csv");
+}
+
+#[test]
+fn import_as_adds_its_reason_to_a_table_the_rule_already_sends_there() {
+    let d = tempfile::tempdir().unwrap();
+    let small = d.path().join("small.xlsx");
+    xlsx(&small, &[("S", rows(1))], |_| {});
+    let md = d.path().join("small.md");
+    let (code, v, _) = import_json(&[
+        &small,
+        Path::new("--as"),
+        Path::new("md"),
+        Path::new("--out"),
+        &md,
+    ]);
+    assert_eq!(code, Some(0));
+    assert_eq!(v["results"][0]["rule"], "t1");
+    assert_eq!(
+        v["results"][0]["reasons"],
+        serde_json::json!(["target forced by --as"])
+    );
+}
+
+#[test]
+fn import_as_reports_the_whole_reasons_array_and_the_output_path() {
+    let d = tempfile::tempdir().unwrap();
+    let large = d.path().join("large.xlsx");
+    xlsx(&large, &[("L", rows(40))], |_| {});
+    let md = d.path().join("large.md");
+    let (code, v, _) = import_json(&[
+        &large,
+        Path::new("--as"),
+        Path::new("md"),
+        Path::new("--out"),
+        &md,
+    ]);
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        v["results"][0]["reasons"],
+        serde_json::json!(["rows 40 > 30", "target forced by --as"])
+    );
+    assert_eq!(v["results"][0]["out"], md.display().to_string());
+    assert_eq!(v["summary"]["written"], 1);
+
+    let text_md = d.path().join("text.md");
+    tblctl()
+        .arg("import")
+        .arg(&large)
+        .args(["--as", "md"])
+        .arg("--out")
+        .arg(&text_md)
+        .assert()
+        .code(0)
+        .stderr(contains(format!("-> {}", text_md.display())));
+}
+
+#[test]
+fn import_as_reports_a_forced_t0_table_as_written() {
+    let d = tempfile::tempdir().unwrap();
+    let hist = d.path().join("h.csv");
+    std::fs::write(&hist, "Version,Date,Author\n1,2024-01-01,A\n").unwrap();
+    let md = d.path().join("h.md");
+    let (code, v, _) = import_json(&[
+        &hist,
+        Path::new("--as"),
+        Path::new("md"),
+        Path::new("--out"),
+        &md,
+    ]);
+    assert_eq!(code, Some(0));
+    assert_eq!(v["results"][0]["rule"], "t0");
+    assert_eq!(v["results"][0]["target"], "markdown");
+    assert_eq!(
+        v["results"][0]["reasons"],
+        serde_json::json!(["revision history", "target forced by --as"])
+    );
+    assert_eq!(v["results"][0]["out"], md.display().to_string());
+    assert_eq!(v["summary"]["written"], 1);
+
+    let text_md = d.path().join("h2.md");
+    tblctl()
+        .arg("import")
+        .arg(&hist)
+        .args(["--as", "md"])
+        .arg("--out")
+        .arg(&text_md)
+        .assert()
+        .code(0)
+        .stderr(contains(format!("-> {}", text_md.display())));
+}
+
+#[test]
+fn import_as_never_writes_an_empty_table() {
+    let d = tempfile::tempdir().unwrap();
+    let empty = d.path().join("e.csv");
+    std::fs::write(&empty, ",\n,\n").unwrap();
+    let md = d.path().join("e.md");
+    let (code, v, _) = import_json(&[
+        &empty,
+        Path::new("--as"),
+        Path::new("md"),
+        Path::new("--out"),
+        &md,
+    ]);
+    assert_eq!(code, Some(0));
+    assert_eq!(v["results"][0]["rule"], "t0");
+    assert!(v["results"][0]["out"].is_null());
+    assert_eq!(v["results"][0]["reasons"], serde_json::json!(["empty"]));
+    assert_eq!(v["summary"]["written"], 0);
+    assert!(!md.exists());
+    tblctl()
+        .arg("import")
+        .arg(&empty)
+        .args(["--as", "md"])
+        .arg("--out")
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stderr(contains("nothing written"));
+    assert!(!md.exists());
+}
+
+#[test]
+fn import_rejects_an_unknown_as_value() {
+    let d = tempfile::tempdir().unwrap();
+    let small = d.path().join("small.xlsx");
+    xlsx(&small, &[("S", rows(1))], |_| {});
+    tblctl()
+        .arg("import")
+        .arg(&small)
+        .args(["--as", "html"])
+        .arg("--out")
+        .arg(d.path().join("o.md"))
+        .assert()
+        .code(2);
+}
