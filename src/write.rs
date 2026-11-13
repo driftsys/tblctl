@@ -1,7 +1,7 @@
 //! Writes a table as Markdown, CSV, a link stub or XLSX.
 
 use crate::table::Grid;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::{Component, Path, PathBuf};
 
 /// Escapes a cell for a pipe table: Markdown punctuation that would change
@@ -120,6 +120,16 @@ fn number(cell: &str) -> Option<f64> {
     (n.is_finite() && back == cell).then_some(n)
 }
 
+/// The name of worksheet `i` of `n`: `Sheet1` when there is one, otherwise
+/// `Table1`, `Table2`, ...
+pub fn sheet_name(i: usize, n: usize) -> String {
+    if n > 1 {
+        format!("Table{}", i + 1)
+    } else {
+        "Sheet1".into()
+    }
+}
+
 /// Writes each grid as one worksheet of an XLSX file. Output is
 /// deterministic: the document creation time is fixed.
 pub fn xlsx(grids: &[Grid], out: &Path) -> Result<()> {
@@ -130,7 +140,7 @@ pub fn xlsx(grids: &[Grid], out: &Path) -> Result<()> {
     for (i, g) in grids.iter().enumerate() {
         let ws = wb.add_worksheet();
         if grids.len() > 1 {
-            ws.set_name(format!("Table{}", i + 1))?;
+            ws.set_name(sheet_name(i, grids.len()))?;
         }
         for (r, row) in g.rows.iter().enumerate() {
             for (c, cell) in row.iter().enumerate() {
@@ -146,7 +156,7 @@ pub fn xlsx(grids: &[Grid], out: &Path) -> Result<()> {
             }
         }
     }
-    wb.save(out).with_context(|| out.display().to_string())?;
+    wb.save(out)?;
     Ok(())
 }
 

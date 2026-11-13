@@ -3,8 +3,12 @@ use predicates::str::contains;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+/// The binary, with the colour variables of the parent environment removed so
+/// that text output is plain unless a test sets them.
 fn tblctl() -> Command {
-    Command::cargo_bin("tblctl").unwrap()
+    let mut cmd = Command::cargo_bin("tblctl").unwrap();
+    cmd.env_remove("CLICOLOR_FORCE").env_remove("NO_COLOR");
+    cmd
 }
 
 fn table(rows: usize, cols: usize, cell: &str) -> String {
@@ -89,7 +93,12 @@ fn threshold_flags_override_defaults() {
 fn tables_in_fenced_code_are_ignored() {
     let dir = tempfile::tempdir().unwrap();
     let md = write(&dir, "a.md", &format!("```\n{}```\n", table(31, 2, "x")));
-    tblctl().arg("check").arg(&md).assert().code(0).stdout("");
+    tblctl()
+        .arg("check")
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stdout("0 tables: 0 passed, 0 failed\n");
 }
 
 #[test]
@@ -101,7 +110,8 @@ fn many_files_are_checked_in_order() {
     assert_eq!(out.status.code(), Some(1));
     let stdout = String::from_utf8(out.stdout).unwrap();
     let lines: Vec<&str> = stdout.lines().collect();
-    assert_eq!(lines.len(), 2);
+    assert_eq!(lines.len(), 3);
+    assert_eq!(lines[2], "2 tables: 1 passed, 1 failed");
     assert!(lines[0].starts_with("PASS") && lines[0].contains("a.md:1"));
     assert!(lines[1].starts_with("FAIL") && lines[1].contains("b.md:1"));
 }
@@ -121,7 +131,20 @@ fn unreadable_file_exits_2_and_still_checks_the_rest() {
 }
 
 #[test]
-fn json_is_an_array_with_one_object_per_table() {
+fn summary_is_printed_when_one_file_is_read_and_one_is_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = write(&dir, "a.md", &table(1, 1, "x"));
+    tblctl()
+        .arg("check")
+        .arg(dir.path().join("missing.md"))
+        .arg(&a)
+        .assert()
+        .code(2)
+        .stdout(contains("1 table: 1 passed, 0 failed\n"));
+}
+
+#[test]
+fn json_results_hold_one_object_per_table() {
     let dir = tempfile::tempdir().unwrap();
     let md = write(
         &dir,
@@ -135,7 +158,7 @@ fn json_is_an_array_with_one_object_per_table() {
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let arr = v.as_array().unwrap();
+    let arr = v["results"].as_array().unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0]["status"], "pass");
     assert_eq!(arr[0]["rule"], "t1");
@@ -224,4 +247,87 @@ fn an_escaped_bracket_does_not_open_a_link() {
         .assert()
         .code(1)
         .stdout(contains("cell 10 > 5"));
+}
+
+#[test]
+fn clicolor_force_colours_the_state_word_with_the_same_padding() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(
+        &dir,
+        "a.md",
+        &format!("{}\n{}", table(1, 1, "x"), table(31, 1, "x")),
+    );
+    let out = tblctl()
+        .arg("check")
+        .arg(&md)
+        .env("CLICOLOR_FORCE", "1")
+        .env_remove("NO_COLOR")
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("\x1b[32mPASS\x1b[0m    [T1] "), "{text:?}");
+    assert!(text.contains("\x1b[31mFAIL\x1b[0m    [T1] "), "{text:?}");
+}
+
+#[test]
+fn no_color_wins_over_clicolor_force() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(&dir, "a.md", &table(1, 1, "x"));
+    let out = tblctl()
+        .arg("check")
+        .arg(&md)
+        .env("CLICOLOR_FORCE", "1")
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(!text.contains('\x1b'), "{text:?}");
+    assert!(text.starts_with("PASS    [T1] "));
+}
+
+#[test]
+fn summary_uses_singular_for_one_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = write(&dir, "a.md", &table(1, 1, "x"));
+    tblctl()
+        .arg("check")
+        .arg(&md)
+        .assert()
+        .code(0)
+        .stdout(contains("1 table: 1 passed, 0 failed\n"));
+}
+
+#[test]
+fn missing_workbook_error_does_not_repeat_the_cause() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = tblctl()
+        .arg("classify")
+        .arg(dir.path().join("missing.xlsx"))
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        err.matches("No such file").count() + err.matches("cannot find").count(),
+        1,
+        "{err}"
+    );
+}
+
+#[test]
+fn closed_stderr_does_not_panic_and_the_envelope_is_written() {
+    let dir = tempfile::tempdir().unwrap();
+    // The read end is dropped before the child starts, so every write to
+    // stderr fails.
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let out = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
+        .args(["classify", "--json"])
+        .arg(dir.path().join("missing.md"))
+        .stdout(std::process::Stdio::piped())
+        .stderr(writer)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["errors"][0]["code"], "read_failed");
 }

@@ -40,7 +40,11 @@ decision is agreed but not implemented.
 - Scripts can rely on the same exit codes across tblctl, pixctl and diagctl.
 - Adding a check that reports `REVIEW` needs no change to the output shape or
   the flags.
-- The JSON form of this output is in [design/check.md](../design/check.md).
+- The JSON form of this output is the envelope of
+  [AD-0005](0005-json-envelope-and-human-output.md), described in
+  [design/check.md](../design/check.md). AD-0005 also adds a summary line after
+  the result lines, omitted when no input could be read, and colours the state
+  word on a terminal.
 
 Satisfies: [issue #1](https://github.com/driftsys/tblctl/issues/1) Related:
-AD-0003, AD-0004
+AD-0003, AD-0004, AD-0005

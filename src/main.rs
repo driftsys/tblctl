@@ -1,6 +1,7 @@
 mod check;
 mod cli;
 mod commands;
+mod error;
 mod markdown;
 mod output;
 mod read;
@@ -22,7 +23,7 @@ fn limits(a: LimitArgs) -> Limits {
 
 fn main() {
     let cli = Cli::parse();
-    let result = match cli.command {
+    let code = match cli.command {
         Command::Classify {
             files,
             json,
@@ -32,21 +33,16 @@ fn main() {
             file,
             sheet,
             out,
+            json,
             limits: l,
-        } => commands::import(&file, sheet.as_deref(), &out, &limits(l)),
+        } => commands::import(&file, sheet.as_deref(), &out, &limits(l), json),
         Command::Check {
             files,
             json,
             strict,
             limits: l,
         } => check::run(&files, &limits(l), json, strict),
-        Command::Export { file, out } => commands::export(&file, &out),
+        Command::Export { file, out, json } => commands::export(&file, &out, json),
     };
-    match result {
-        Ok(code) => std::process::exit(code),
-        Err(err) => {
-            eprintln!("tblctl: {err:#}");
-            std::process::exit(2);
-        }
-    }
+    std::process::exit(code);
 }

@@ -1,33 +1,56 @@
 //! Reads tables from Markdown, CSV, workbook and DOCX files.
 
+use crate::error::Error;
 use crate::markdown;
 use crate::table::{Facts, Grid};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use calamine::{Data, Dimensions, Reader, SheetType, SheetVisible, Sheets};
 use std::io::Read as _;
 use std::path::Path;
 
 /// Returns every table in `path`, in file order. Hidden sheets are skipped.
-pub fn tables(path: &Path) -> Result<Vec<Grid>> {
+pub fn tables(path: &Path) -> std::result::Result<Vec<Grid>, Error> {
     let file = path.display().to_string();
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let mut grids = match ext.as_str() {
-        "md" | "markdown" => markdown_tables(path, &file)?,
-        "csv" => vec![csv_table(path, &file)?],
-        "xlsx" | "xlsm" | "xls" | "xlsb" | "ods" => workbook_tables(path, &file)?,
-        "docx" => docx_tables(path, &file)?,
+    let read = match ext.as_str() {
+        "md" | "markdown" => markdown_tables(path, &file),
+        "csv" => csv_table(path, &file).map(|g| vec![g]),
+        "xlsx" | "xlsm" | "xls" | "xlsb" | "ods" => workbook_tables(path, &file),
+        "docx" => docx_tables(path, &file),
         _ => {
-            bail!("{file}: unsupported file type (expected md, csv, xlsx, xls, xlsb, ods or docx)")
+            return Err(Error::UnsupportedType {
+                message: format!(
+                    "{file}: unsupported file type (expected md, csv, xlsx, xls, xlsb, ods or docx)"
+                ),
+                file,
+            })
         }
     };
+    let mut grids = read.map_err(|err| Error::ReadFailed {
+        file: file.clone(),
+        message: chain_message(&err),
+    })?;
     for g in &mut grids {
         g.normalise();
     }
     Ok(grids)
+}
+
+/// Joins an error chain with ": ", leaving out each cause whose text is
+/// already part of an earlier message (calamine repeats its I/O cause).
+fn chain_message(err: &anyhow::Error) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for cause in err.chain() {
+        let text = cause.to_string();
+        if !parts.iter().any(|p| p.contains(&text)) {
+            parts.push(text);
+        }
+    }
+    parts.join(": ")
 }
 
 fn markdown_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
@@ -247,8 +270,10 @@ fn docx_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
     let mut xml = String::new();
     zip.by_name("word/document.xml")
         .with_context(|| format!("{file}: no word/document.xml"))?
-        .read_to_string(&mut xml)?;
-    Ok(docx::parse(&xml)?
+        .read_to_string(&mut xml)
+        .with_context(|| file.to_string())?;
+    Ok(docx::parse(&xml)
+        .with_context(|| file.to_string())?
         .into_iter()
         .enumerate()
         .map(|(i, (rows, facts))| Grid {

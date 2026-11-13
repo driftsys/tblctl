@@ -4,8 +4,12 @@ use rust_xlsxwriter::{Formula, Workbook};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+/// The binary, with the colour variables of the parent environment removed so
+/// that text output is plain unless a test sets them.
 fn tblctl() -> Command {
-    Command::cargo_bin("tblctl").unwrap()
+    let mut cmd = Command::cargo_bin("tblctl").unwrap();
+    cmd.env_remove("CLICOLOR_FORCE").env_remove("NO_COLOR");
+    cmd
 }
 
 fn rows(n: usize) -> Vec<Vec<String>> {
@@ -56,7 +60,8 @@ fn classify_json(files: &[PathBuf]) -> serde_json::Value {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    serde_json::from_slice(&out.stdout).unwrap()
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    v["results"].clone()
 }
 
 #[test]
@@ -165,7 +170,8 @@ fn import_writes_markdown_csv_or_link_stub() {
         .arg(&md)
         .assert()
         .code(0)
-        .stdout(contains("T1  markdown"));
+        .stdout("")
+        .stderr(contains("T1  markdown"));
     assert_eq!(
         std::fs::read_to_string(&md).unwrap(),
         "| id | name |\n|---|---|\n| 0 | item 0 |\n"
@@ -564,8 +570,9 @@ fn import_of_a_t0_table_writes_nothing_and_exits_0() {
         .arg(&out)
         .assert()
         .code(0)
-        .stdout(contains("T0  skip"))
-        .stdout(contains("nothing written"));
+        .stdout("")
+        .stderr(contains("T0  skip"))
+        .stderr(contains("nothing written"));
     assert!(!out.exists());
 }
 
@@ -638,7 +645,8 @@ fn export_reads_csv_and_writes_one_sheet_per_markdown_table() {
         .arg(&x)
         .assert()
         .code(0)
-        .stdout(contains("2 table(s)"));
+        .stdout("")
+        .stderr(contains("2 table(s)"));
     let s = sheets(&x);
     let names: Vec<&str> = s.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(names, ["Table1", "Table2"]);
@@ -822,4 +830,87 @@ fn export_accepts_an_uppercase_xlsx_extension() {
         .assert()
         .code(0);
     assert!(out.exists());
+}
+
+#[test]
+fn classify_text_ends_with_a_summary_and_colours_the_rule_on_demand() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    let t0 = "| Date | Author |\n|---|---|\n| 2020 | me |\n";
+    // Tables differ from each other: a duplicate table is T0.
+    let t1 = |c: &str| format!("| a |\n|---|\n| {c} |\n");
+    let t2 = |c: &str| format!("| b |\n|---|\n{}", format!("| {c} |\n").repeat(31));
+    let body = [t0.to_string(), t1("x"), t1("y"), t1("z"), t2("1"), t2("2")].join("\n");
+    std::fs::write(&md, body).unwrap();
+    let out = tblctl().arg("classify").arg(&md).output().unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(
+        text.lines().last(),
+        Some("6 tables: 1 T0, 3 T1, 2 T2, 0 T3")
+    );
+    assert!(!text.contains('\x1b'));
+
+    let t3 = d.path().join("f.xlsx");
+    xlsx(&t3, &[("F", rows(40))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_formula(41, 0, Formula::new("=1+1"))
+            .unwrap();
+    });
+    let out = tblctl()
+        .arg("classify")
+        .arg(&md)
+        .arg(&t3)
+        .env("CLICOLOR_FORCE", "1")
+        .env_remove("NO_COLOR")
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("\x1b[32mT1\x1b[0m  markdown "), "{text:?}");
+    assert!(text.contains("\x1b[2mT0\x1b[0m  skip "), "{text:?}");
+    assert!(text.contains("\x1b[32mT2\x1b[0m  csv "), "{text:?}");
+    assert!(text.contains("\x1b[33mT3\x1b[0m  link "), "{text:?}");
+}
+
+#[test]
+fn import_and_export_do_not_panic_when_stderr_is_closed() {
+    let d = tempfile::tempdir().unwrap();
+    let md = d.path().join("a.md");
+    std::fs::write(&md, "| a |\n|---|\n| 1 |\n").unwrap();
+    // A revision history is T0: import writes nothing and prints the
+    // "nothing written" status line.
+    let rev = d.path().join("rev.csv");
+    std::fs::write(&rev, "Version,Date,Author\n1,2020-01-01,me\n").unwrap();
+    let path = |name: &str| d.path().join(name).display().to_string();
+    for args in [
+        vec![
+            "import".to_string(),
+            md.display().to_string(),
+            "--out".into(),
+            path("b.md"),
+        ],
+        vec![
+            "import".to_string(),
+            rev.display().to_string(),
+            "--out".into(),
+            path("rev.md"),
+        ],
+        vec![
+            "export".to_string(),
+            md.display().to_string(),
+            "--out".into(),
+            path("b.xlsx"),
+        ],
+    ] {
+        // The read end is dropped before the child starts, so every write to
+        // stderr fails.
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let status = std::process::Command::new(assert_cmd::cargo::cargo_bin("tblctl"))
+            .args(&args)
+            .stderr(writer)
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(0), "{args:?}");
+    }
 }
