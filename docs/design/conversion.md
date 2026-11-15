@@ -75,7 +75,7 @@ T2; no reader extracts colour yet.
   set. With `--json` it prints the envelope of AD-0005 (schema
   `tblctl/classify/v1`, the objects of AD-0002 in `results`, summary
   `{tables, t0, t1, t2, t3}`). Exit 2 if a file cannot be read, otherwise 0.
-- `import <file> [--sheet NAME] [--as md|csv|link] --out PATH [--json]`
+- `import <file> [--sheet NAME] [--as md|csv|link] [--compact] --out PATH [--json]`
   classifies the selected table and writes a Markdown table (T1), CSV (T2) or a
   one-line link stub (T3). `--as` writes the given format instead; the result
   keeps the computed rule and adds the reason `target forced by --as`. `--out`
@@ -84,11 +84,19 @@ T2; no reader extracts colour yet.
   ignores `--as`: nothing is written, `target` stays `skip`, `reasons` is
   `["empty"]` and the `--out` extension is not checked. In a Markdown table, a
   line break becomes `<br>` and the characters ``\ | * _ ` [ ] < > & ~`` get a
-  backslash, so the text renders as written. The link destination is relative to
-  the directory of `--out`, with `%` and `#` percent-encoded, and wrapped in
-  `<>` when it contains spaces, parentheses, `<` or `>` (which are
-  percent-encoded). `[` and `]` in the file and sheet names of the label get a
-  backslash. `--sheet` is required when the input holds more than one table.
+  backslash, so the text renders as written. Columns are aligned by default:
+  each cell is padded to the widest cell of its column, measured in terminal
+  columns (East Asian wide characters and emoji count 2, at least 1 per column),
+  and the delimiter row has that many dashes. This is the layout `prim` writes,
+  so running the formatter afterwards changes nothing. In both modes, a run of
+  two or more spaces or tabs in a cell becomes one space (Markdown renders a run
+  as one space), before the line break becomes `<br>`. `--compact` writes one
+  space on each side of each cell and `---` delimiters instead. The link
+  destination is relative to the directory of `--out`, with `%` and `#`
+  percent-encoded, and wrapped in `<>` when it contains spaces, parentheses, `<`
+  or `>` (which are percent-encoded). `[` and `]` in the file and sheet names of
+  the label get a backslash. `--sheet` is required when the input holds more
+  than one table.
 - `export <md|csv> --out x.xlsx [--json]` writes one worksheet per table, named
   `Sheet1` when there is one table and `Table1`, `Table2`, … when there are
   several. `--out` must end in `.xlsx`. A cell is written as a number only when
