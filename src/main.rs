@@ -34,6 +34,7 @@ fn main() {
             sheet,
             out,
             as_format,
+            compact,
             json,
             limits: l,
         } => commands::import(
@@ -45,6 +46,7 @@ fn main() {
                 cli::AsFormat::Csv => rules::Target::Csv,
                 cli::AsFormat::Link => rules::Target::Link,
             }),
+            !compact,
             &limits(l),
             json,
         ),

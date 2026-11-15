@@ -146,7 +146,7 @@ fn merged_header_is_flattened_and_merged_data_is_t3() {
 
     let out = d.path().join("head.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&head)
         .arg("--out")
         .arg(&out)
@@ -164,7 +164,7 @@ fn import_writes_markdown_csv_or_link_stub() {
     xlsx(&small, &[("S", rows(1))], |_| {});
     let md = d.path().join("small.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&small)
         .arg("--out")
         .arg(&md)
@@ -181,7 +181,7 @@ fn import_writes_markdown_csv_or_link_stub() {
     xlsx(&large, &[("L", rows(40))], |_| {});
     let csv = d.path().join("large.csv");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&large)
         .arg("--out")
         .arg(&csv)
@@ -194,7 +194,7 @@ fn import_writes_markdown_csv_or_link_stub() {
     // Wrong extension for the selected rule: operational error, nothing written.
     let wrong = d.path().join("large.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&large)
         .arg("--out")
         .arg(&wrong)
@@ -206,7 +206,7 @@ fn import_writes_markdown_csv_or_link_stub() {
     let two = d.path().join("two.xlsx");
     xlsx(&two, &[("A", rows(1)), ("B", rows(2))], |_| {});
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&two)
         .arg("--out")
         .arg(d.path().join("x.md"))
@@ -217,7 +217,7 @@ fn import_writes_markdown_csv_or_link_stub() {
     std::fs::create_dir(&docs).unwrap();
     let stub = docs.join("b.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&two)
         .args(["--sheet", "B"])
         .arg("--out")
@@ -246,7 +246,7 @@ fn docx_tables_are_read() {
     assert_eq!(v[0]["rule"], "t1");
     let out = d.path().join("a.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&doc)
         .arg("--out")
         .arg(&out)
@@ -287,7 +287,7 @@ fn export_round_trips_markdown_through_xlsx() {
 
     let back = d.path().join("back.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&x1)
         .arg("--out")
         .arg(&back)
@@ -340,7 +340,7 @@ fn dates_import_as_iso_and_formatting_merges_outside_data_are_ignored() {
     assert_eq!(v[0]["rule"], "t1", "{v}");
     let out = d.path().join("a.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&x)
         .arg("--out")
         .arg(&out)
@@ -357,7 +357,7 @@ fn import_refuses_to_overwrite_its_input() {
     let md = d.path().join("a.md");
     std::fs::write(&md, "# Doc\n\n| a |\n|---|\n| 1 |\n").unwrap();
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&md)
         .arg("--out")
         .arg(&md)
@@ -519,7 +519,7 @@ fn ods_merged_data_cell_is_t3_and_merged_header_is_flattened() {
     assert_eq!(v[1]["reasons"][0], "merged data cells");
     let out = d.path().join("head.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&head)
         .arg("--out")
         .arg(&out)
@@ -545,7 +545,7 @@ fn ods_dates_import_as_iso() {
     );
     let out = d.path().join("d.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&f)
         .arg("--out")
         .arg(&out)
@@ -564,7 +564,7 @@ fn import_of_a_t0_table_writes_nothing_and_exits_0() {
     std::fs::write(&csv, "Version,Date,Author\n1,2020-01-01,me\n").unwrap();
     let out = d.path().join("rev.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&csv)
         .arg("--out")
         .arg(&out)
@@ -680,7 +680,7 @@ fn imported_text_renders_literally_and_round_trips() {
     std::fs::write(&csv, "k,v\n<value>,*required*\n").unwrap();
     let md = d.path().join("a.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&csv)
         .arg("--out")
         .arg(&md)
@@ -711,7 +711,7 @@ fn csv_cell_of_120_escaped_stars_imports_and_passes_check() {
     std::fs::write(&csv, format!("h\n{}\n", "*".repeat(120))).unwrap();
     let out = d.path().join("s.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&csv)
         .arg("--out")
         .arg(&out)
@@ -738,7 +738,7 @@ fn docx_tab_stop_in_a_later_paragraph_adds_no_tab() {
     );
     let out = d.path().join("t.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&doc)
         .arg("--out")
         .arg(&out)
@@ -772,7 +772,7 @@ fn ods_merges_land_on_the_right_cells_when_data_does_not_start_at_a1() {
     assert_eq!(v[0]["rule"], "t1", "{v}");
     let out = d.path().join("o.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&f)
         .arg("--out")
         .arg(&out)
@@ -922,7 +922,7 @@ fn import_as_forces_the_format_and_keeps_the_rule() {
     xlsx(&large, &[("L", rows(40))], |_| {});
     let md = d.path().join("large.md");
     let out = tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&large)
         .args(["--as", "md", "--json"])
         .arg("--out")
@@ -939,7 +939,7 @@ fn import_as_forces_the_format_and_keeps_the_rule() {
     assert!(text.starts_with("| id | name |\n"));
     assert_eq!(text.lines().count(), 42);
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&large)
         .args(["--as", "md"])
         .arg("--out")
@@ -956,7 +956,7 @@ fn import_as_checks_the_extension_of_the_forced_format() {
     xlsx(&small, &[("S", rows(1))], |_| {});
     let wrong = d.path().join("small.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&small)
         .args(["--as", "csv"])
         .arg("--out")
@@ -968,7 +968,7 @@ fn import_as_checks_the_extension_of_the_forced_format() {
     assert!(!wrong.exists());
     let csv = d.path().join("small.csv");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&small)
         .args(["--as", "csv"])
         .arg("--out")
@@ -981,7 +981,7 @@ fn import_as_checks_the_extension_of_the_forced_format() {
     );
     let stub = d.path().join("link.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&small)
         .args(["--as", "link"])
         .arg("--out")
@@ -1001,7 +1001,7 @@ fn import_as_writes_a_t0_table() {
     std::fs::write(&hist, "Version,Date,Author\n1,2024-01-01,A\n").unwrap();
     let md = d.path().join("h.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&hist)
         .args(["--as", "md"])
         .arg("--out")
@@ -1017,7 +1017,7 @@ fn import_as_writes_a_t0_table() {
 /// stderr.
 fn import_json(args: &[&Path]) -> (Option<i32>, serde_json::Value, String) {
     let out = tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg("--json")
         .args(args)
         .output()
@@ -1036,7 +1036,7 @@ fn import_without_as_names_the_rule_in_the_extension_error() {
     let large = d.path().join("large.xlsx");
     xlsx(&large, &[("L", rows(40))], |_| {});
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&large)
         .arg("--out")
         .arg(d.path().join("large.md"))
@@ -1053,7 +1053,7 @@ fn import_as_link_and_md_name_the_flag_in_the_extension_error() {
     for (flag, label) in [("link", "--as link"), ("md", "--as md")] {
         let wrong = d.path().join(format!("{flag}.csv"));
         tblctl()
-            .arg("import")
+            .args(["import", "--compact"])
             .arg(&small)
             .args(["--as", flag])
             .arg("--out")
@@ -1128,7 +1128,7 @@ fn import_as_reports_the_whole_reasons_array_and_the_output_path() {
 
     let text_md = d.path().join("text.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&large)
         .args(["--as", "md"])
         .arg("--out")
@@ -1163,7 +1163,7 @@ fn import_as_reports_a_forced_t0_table_as_written() {
 
     let text_md = d.path().join("h2.md");
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&hist)
         .args(["--as", "md"])
         .arg("--out")
@@ -1195,7 +1195,7 @@ fn import_as_never_writes_an_empty_table() {
     assert!(!md.exists());
     // The extension is not checked: nothing is forced into a file.
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&empty)
         .args(["--as", "csv"])
         .arg("--out")
@@ -1205,7 +1205,7 @@ fn import_as_never_writes_an_empty_table() {
         .stderr(contains("nothing written"));
     assert!(!md.exists());
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&empty)
         .args(["--as", "md"])
         .arg("--out")
@@ -1222,11 +1222,51 @@ fn import_rejects_an_unknown_as_value() {
     let small = d.path().join("small.xlsx");
     xlsx(&small, &[("S", rows(1))], |_| {});
     tblctl()
-        .arg("import")
+        .args(["import", "--compact"])
         .arg(&small)
         .args(["--as", "html"])
         .arg("--out")
         .arg(d.path().join("o.md"))
         .assert()
         .code(2);
+}
+
+#[test]
+fn import_aligns_markdown_columns_by_default() {
+    let d = tempfile::tempdir().unwrap();
+    let csv = d.path().join("a.csv");
+    std::fs::write(&csv, "Signal,Unit,Max\nSpeed,km/h,250\nTorque,Nm,400\n").unwrap();
+    let md = d.path().join("a.md");
+    tblctl()
+        .arg("import")
+        .arg(&csv)
+        .arg("--out")
+        .arg(&md)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&md).unwrap(),
+        "| Signal | Unit | Max |\n| ------ | ---- | --- |\n| Speed  | km/h | 250 |\n| Torque | Nm   | 400 |\n"
+    );
+    // Aligned output is read back as the same table.
+    let x = d.path().join("a.xlsx");
+    tblctl()
+        .arg("export")
+        .arg(&md)
+        .arg("--out")
+        .arg(&x)
+        .assert()
+        .code(0);
+    let back = d.path().join("b.md");
+    tblctl()
+        .arg("import")
+        .arg(&x)
+        .arg("--out")
+        .arg(&back)
+        .assert()
+        .code(0);
+    assert_eq!(
+        std::fs::read_to_string(&back).unwrap(),
+        std::fs::read_to_string(&md).unwrap()
+    );
 }

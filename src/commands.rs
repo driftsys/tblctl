@@ -160,10 +160,11 @@ pub fn import(
     sheet: Option<&str>,
     out: &Path,
     forced: Option<Target>,
+    align: bool,
     limits: &Limits,
     json: bool,
 ) -> i32 {
-    let (results, errors) = match import_table(file, sheet, out, forced, limits) {
+    let (results, errors) = match import_table(file, sheet, out, forced, align, limits) {
         Ok(i) => {
             if !json {
                 let status = format!(
@@ -202,6 +203,7 @@ fn import_table(
     sheet: Option<&str>,
     out: &Path,
     forced: Option<Target>,
+    align: bool,
     limits: &Limits,
 ) -> Result<Imported, Error> {
     let out_name = out.display().to_string();
@@ -256,7 +258,7 @@ fn import_table(
         message: format!("{out_name}: {err}"),
     };
     let body = match target {
-        Target::Markdown => write::markdown(&grid),
+        Target::Markdown => write::markdown(&grid, align),
         Target::Csv => write::csv(&grid).map_err(|e| write_failed(format!("{e:#}")))?,
         Target::Link => {
             write::link_stub(&grid, file, out).map_err(|e| write_failed(format!("{e:#}")))?

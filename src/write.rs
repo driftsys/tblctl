@@ -22,13 +22,46 @@ fn md_cell(cell: &str) -> String {
 }
 
 /// Renders `grid` as a GFM pipe table. The first row is the header.
-pub fn markdown(grid: &Grid) -> String {
+///
+/// With `align`, each column is padded to its widest cell, measured in
+/// terminal columns (East Asian wide characters and emoji count 2, at least
+/// 1 per column), and the delimiter row has that many dashes. This is the
+/// layout `prim` writes, so formatting the file again changes nothing.
+/// Without `align`, cells get one space on each side and the delimiter is
+/// `---`.
+pub fn markdown(grid: &Grid, align: bool) -> String {
+    use unicode_width::UnicodeWidthStr;
+    let rows: Vec<Vec<String>> = grid
+        .rows
+        .iter()
+        .map(|r| r.iter().map(|c| md_cell(c)).collect())
+        .collect();
+    let columns = rows.first().map_or(0, Vec::len);
+    let widths: Vec<usize> = (0..columns)
+        .map(|c| {
+            if !align {
+                return 0;
+            }
+            rows.iter()
+                .map(|r| r.get(c).map_or(0, |s| s.width()))
+                .max()
+                .unwrap_or(0)
+                .max(1)
+        })
+        .collect();
+    let line = |cells: Vec<String>| format!("| {} |\n", cells.join(" | "));
+    let pad = |s: &str, w: usize| format!("{s}{}", " ".repeat(w.saturating_sub(s.width())));
     let mut out = String::new();
-    for (i, row) in grid.rows.iter().enumerate() {
-        let cells: Vec<String> = row.iter().map(|c| md_cell(c)).collect();
-        out.push_str(&format!("| {} |\n", cells.join(" | ")));
+    for (i, row) in rows.iter().enumerate() {
+        out.push_str(&line(
+            row.iter().zip(&widths).map(|(s, w)| pad(s, *w)).collect(),
+        ));
         if i == 0 {
-            out.push_str(&format!("|{}\n", "---|".repeat(row.len())));
+            if align {
+                out.push_str(&line(widths.iter().map(|w| "-".repeat(*w)).collect()));
+            } else {
+                out.push_str(&format!("|{}\n", "---|".repeat(columns)));
+            }
         }
     }
     out
@@ -177,16 +210,47 @@ mod tests {
     }
 
     #[test]
+    fn aligned_markdown_matches_prim() {
+        // Expected strings are `prim` output for the same tables.
+        let g = grid(&[
+            &["Signal", "Unit", "Max"],
+            &["Speed", "km/h", "250"],
+            &["Torque", "Nm", "400"],
+        ]);
+        assert_eq!(
+            markdown(&g, true),
+            "| Signal | Unit | Max |\n| ------ | ---- | --- |\n| Speed  | km/h | 250 |\n| Torque | Nm   | 400 |\n"
+        );
+        let g = grid(&[
+            &["a", "Long header"],
+            &["x", "1"],
+            &["漢字", "é | b"],
+            &["", "y\nz"],
+        ]);
+        assert_eq!(
+            markdown(&g, true),
+            "| a    | Long header |\n| ---- | ----------- |\n| x    | 1           |\n| 漢字 | é \\| b      |\n|      | y<br>z      |\n"
+        );
+        let g = grid(&[&["😀", "b"], &["1", "2"]]);
+        assert_eq!(markdown(&g, true), "| 😀 | b |\n| -- | - |\n| 1  | 2 |\n");
+        let g = grid(&[&["", ""], &["", ""]]);
+        assert_eq!(markdown(&g, true), "|   |   |\n| - | - |\n|   |   |\n");
+    }
+
+    #[test]
     fn markdown_escapes_pipes_and_line_breaks() {
         let g = grid(&[&["a", "b"], &["x|y", "1\n2"]]);
-        assert_eq!(markdown(&g), "| a | b |\n|---|---|\n| x\\|y | 1<br>2 |\n");
+        assert_eq!(
+            markdown(&g, false),
+            "| a | b |\n|---|---|\n| x\\|y | 1<br>2 |\n"
+        );
     }
 
     #[test]
     fn markdown_escapes_punctuation_that_changes_rendering() {
         let g = grid(&[&["a"], &["<v> *r* _u_ `c` [l] a\\b &amp; ~s~"]]);
         assert_eq!(
-            markdown(&g),
+            markdown(&g, false),
             "| a |\n|---|\n| \\<v\\> \\*r\\* \\_u\\_ \\`c\\` \\[l\\] a\\\\b \\&amp; \\~s\\~ |\n"
         );
     }

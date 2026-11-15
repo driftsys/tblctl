@@ -62,7 +62,8 @@ pub enum Command {
   tblctl import att/limits.xlsx --out docs/limits.md
   tblctl import att/limits.xlsx --sheet Limits --out docs/limits.md
   tblctl import att/large.xlsx --sheet Data --out docs/data.csv
-  tblctl import att/large.xlsx --as md --out docs/data.md")]
+  tblctl import att/large.xlsx --as md --out docs/data.md
+  tblctl import att/limits.xlsx --compact --out docs/limits.md")]
     Import {
         /// Source file: xlsx, xlsm, xls, xlsb, ods, docx, csv, md
         file: PathBuf,
@@ -75,6 +76,9 @@ pub enum Command {
         /// Write this format instead of the one the rule selects
         #[arg(long = "as", value_enum)]
         as_format: Option<AsFormat>,
+        /// Write Markdown tables without column alignment (one space per side)
+        #[arg(long)]
+        compact: bool,
         /// Emit JSON
         #[arg(long)]
         json: bool,
