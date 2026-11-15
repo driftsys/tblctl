@@ -51,7 +51,7 @@ fn flush_blanks(run: &mut String, text: &mut String) {
 /// terminal columns (East Asian wide characters and emoji count 2, at least
 /// 1 per column), and the delimiter row has that many dashes. This is the
 /// layout `prim` writes, so formatting the file again changes nothing.
-/// A run of two or more spaces in a cell becomes one space in both modes.
+/// A run of two or more spaces or tabs in a cell becomes one space in both modes.
 /// Without `align`, cells get one space on each side and the delimiter is
 /// `---`.
 pub fn markdown(grid: &Grid, align: bool) -> String {

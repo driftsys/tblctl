@@ -1297,7 +1297,8 @@ fn import_as_md_json_writes_aligned_columns_by_default() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0));
-    let _: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["results"][0]["target"], "markdown");
     assert_eq!(
         std::fs::read_to_string(&md).unwrap(),
         "| Id     | Description |\n| ------ | ----------- |\n| Speed  | a           |\n| Torque | bc          |\n"
