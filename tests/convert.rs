@@ -1235,7 +1235,8 @@ fn import_rejects_an_unknown_as_value() {
 fn import_aligns_markdown_columns_by_default() {
     let d = tempfile::tempdir().unwrap();
     let csv = d.path().join("a.csv");
-    std::fs::write(&csv, "Signal,Unit,Max\nSpeed,km/h,250\nTorque,Nm,400\n").unwrap();
+    // "Id" is narrower than its widest cell, "Description" is wider than its.
+    std::fs::write(&csv, "Id,Description\nSpeed,a\nTorque,bc\n").unwrap();
     let md = d.path().join("a.md");
     tblctl()
         .arg("import")
@@ -1246,9 +1247,9 @@ fn import_aligns_markdown_columns_by_default() {
         .code(0);
     assert_eq!(
         std::fs::read_to_string(&md).unwrap(),
-        "| Signal | Unit | Max |\n| ------ | ---- | --- |\n| Speed  | km/h | 250 |\n| Torque | Nm   | 400 |\n"
+        "| Id     | Description |\n| ------ | ----------- |\n| Speed  | a           |\n| Torque | bc          |\n"
     );
-    // Aligned output is read back as the same table.
+    // Padding does not leak into the cell values.
     let x = d.path().join("a.xlsx");
     tblctl()
         .arg("export")
@@ -1257,16 +1258,48 @@ fn import_aligns_markdown_columns_by_default() {
         .arg(&x)
         .assert()
         .code(0);
-    let back = d.path().join("b.md");
-    tblctl()
-        .arg("import")
-        .arg(&x)
-        .arg("--out")
-        .arg(&back)
-        .assert()
-        .code(0);
+    use calamine::{Data, Reader};
+    let mut wb = calamine::open_workbook_auto(&x).unwrap();
+    let name = wb.sheet_names()[0].clone();
+    let r = wb.worksheet_range(&name).unwrap();
+    let values: Vec<Vec<String>> = r
+        .rows()
+        .map(|row| {
+            row.iter()
+                .map(|c| match c {
+                    Data::String(s) => s.clone(),
+                    other => panic!("unexpected cell {other:?}"),
+                })
+                .collect()
+        })
+        .collect();
     assert_eq!(
-        std::fs::read_to_string(&back).unwrap(),
-        std::fs::read_to_string(&md).unwrap()
+        values,
+        vec![
+            vec!["Id", "Description"],
+            vec!["Speed", "a"],
+            vec!["Torque", "bc"]
+        ]
+    );
+}
+
+#[test]
+fn import_as_md_json_writes_aligned_columns_by_default() {
+    let d = tempfile::tempdir().unwrap();
+    let csv = d.path().join("a.csv");
+    std::fs::write(&csv, "Id,Description\nSpeed,a\nTorque,bc\n").unwrap();
+    let md = d.path().join("a.md");
+    let out = tblctl()
+        .args(["import", "--as", "md", "--json"])
+        .arg(&csv)
+        .arg("--out")
+        .arg(&md)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let _: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&md).unwrap(),
+        "| Id     | Description |\n| ------ | ----------- |\n| Speed  | a           |\n| Torque | bc          |\n"
     );
 }

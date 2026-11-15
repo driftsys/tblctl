@@ -6,9 +6,22 @@ use std::path::{Component, Path, PathBuf};
 
 /// Escapes a cell for a pipe table: Markdown punctuation that would change
 /// how the text renders gets a backslash, and a line break becomes `<br>`.
+/// A run of two or more spaces or tabs becomes one space first (Markdown
+/// renders a run as one space), so spaces around a line break collapse too.
 fn md_cell(cell: &str) -> String {
     let mut out = String::new();
+    let mut run = String::new();
+    let mut text = String::new();
     for c in cell.trim().replace("\r\n", "\n").chars() {
+        if c == ' ' || c == '\t' {
+            run.push(c);
+            continue;
+        }
+        flush_blanks(&mut run, &mut text);
+        text.push(c);
+    }
+    flush_blanks(&mut run, &mut text);
+    for c in text.chars() {
         match c {
             '\n' => out.push_str("<br>"),
             '\\' | '|' | '*' | '_' | '`' | '[' | ']' | '<' | '>' | '&' | '~' => {
@@ -21,12 +34,24 @@ fn md_cell(cell: &str) -> String {
     out
 }
 
+/// Appends the pending run of spaces and tabs to `text`: a run of one stays
+/// as it is, a longer run becomes one space.
+fn flush_blanks(run: &mut String, text: &mut String) {
+    match run.len() {
+        0 => {}
+        1 => text.push_str(run),
+        _ => text.push(' '),
+    }
+    run.clear();
+}
+
 /// Renders `grid` as a GFM pipe table. The first row is the header.
 ///
 /// With `align`, each column is padded to its widest cell, measured in
 /// terminal columns (East Asian wide characters and emoji count 2, at least
 /// 1 per column), and the delimiter row has that many dashes. This is the
 /// layout `prim` writes, so formatting the file again changes nothing.
+/// A run of two or more spaces in a cell becomes one space in both modes.
 /// Without `align`, cells get one space on each side and the delimiter is
 /// `---`.
 pub fn markdown(grid: &Grid, align: bool) -> String {
@@ -37,25 +62,28 @@ pub fn markdown(grid: &Grid, align: bool) -> String {
         .map(|r| r.iter().map(|c| md_cell(c)).collect())
         .collect();
     let columns = rows.first().map_or(0, Vec::len);
-    let widths: Vec<usize> = (0..columns)
-        .map(|c| {
-            if !align {
-                return 0;
-            }
-            rows.iter()
-                .map(|r| r.get(c).map_or(0, |s| s.width()))
-                .max()
-                .unwrap_or(0)
-                .max(1)
-        })
-        .collect();
+    let widths: Vec<usize> = if align {
+        (0..columns)
+            .map(|c| {
+                rows.iter()
+                    .map(|r| r.get(c).map_or(0, |s| s.width()))
+                    .max()
+                    .unwrap_or(0)
+                    .max(1)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let line = |cells: Vec<String>| format!("| {} |\n", cells.join(" | "));
     let pad = |s: &str, w: usize| format!("{s}{}", " ".repeat(w.saturating_sub(s.width())));
     let mut out = String::new();
     for (i, row) in rows.iter().enumerate() {
-        out.push_str(&line(
-            row.iter().zip(&widths).map(|(s, w)| pad(s, *w)).collect(),
-        ));
+        out.push_str(&line(if align {
+            row.iter().zip(&widths).map(|(s, w)| pad(s, *w)).collect()
+        } else {
+            row.clone()
+        }));
         if i == 0 {
             if align {
                 out.push_str(&line(widths.iter().map(|w| "-".repeat(*w)).collect()));
@@ -211,7 +239,7 @@ mod tests {
 
     #[test]
     fn aligned_markdown_matches_prim() {
-        // Expected strings are `prim` output for the same tables.
+        // Expected strings are `prim` 0.9.1 output for the same tables.
         let g = grid(&[
             &["Signal", "Unit", "Max"],
             &["Speed", "km/h", "250"],
@@ -235,6 +263,26 @@ mod tests {
         assert_eq!(markdown(&g, true), "| 😀 | b |\n| -- | - |\n| 1  | 2 |\n");
         let g = grid(&[&["", ""], &["", ""]]);
         assert_eq!(markdown(&g, true), "|   |   |\n| - | - |\n|   |   |\n");
+    }
+
+    #[test]
+    fn runs_of_spaces_collapse_to_one_space() {
+        // Expected strings are `prim` 0.9.1 output for the same tables
+        // (`prim` collapses a run of spaces and measures the result).
+        let g = grid(&[&["h"], &["a  b"], &["a  \n  b"]]);
+        assert_eq!(
+            markdown(&g, true),
+            "| h        |\n| -------- |\n| a b      |\n| a <br> b |\n"
+        );
+        assert_eq!(markdown(&g, false), "| h |\n|---|\n| a b |\n| a <br> b |\n");
+    }
+
+    #[test]
+    fn runs_of_tabs_and_mixed_whitespace_collapse_to_one_space() {
+        // `prim` 0.9.1 leaves tabs alone; tblctl collapses them so the
+        // width of a padded column does not depend on how a tab is measured.
+        let g = grid(&[&["h"], &["a\t\tb"], &["a \t b"]]);
+        assert_eq!(markdown(&g, false), "| h |\n|---|\n| a b |\n| a b |\n");
     }
 
     #[test]

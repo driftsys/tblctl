@@ -30,6 +30,8 @@ to T3 already choose the output format for an imported table.
   `target forced by --as`, and a T0 table is written too. An empty table ignores
   `--as`: nothing is written, `target` stays `skip`, `reasons` is `["empty"]`
   and the `--out` extension is not checked.
+- `import --compact` writes a Markdown table without column padding (one space
+  on each side of each cell, `---` delimiters). Without it, columns are aligned.
 
 `import` and `export` convert one file, so they take a single input.
 `import --sheet` selects one table when the input has several.

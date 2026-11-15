@@ -88,7 +88,9 @@ T2; no reader extracts colour yet.
   each cell is padded to the widest cell of its column, measured in terminal
   columns (East Asian wide characters and emoji count 2, at least 1 per column),
   and the delimiter row has that many dashes. This is the layout `prim` writes,
-  so running the formatter afterwards changes nothing. `--compact` writes one
+  so running the formatter afterwards changes nothing. In both modes, a run of
+  two or more spaces or tabs in a cell becomes one space (Markdown renders a run
+  as one space), before the line break becomes `<br>`. `--compact` writes one
   space on each side of each cell and `---` delimiters instead. The link
   destination is relative to the directory of `--out`, with `%` and `#`
   percent-encoded, and wrapped in `<>` when it contains spaces, parentheses, `<`
