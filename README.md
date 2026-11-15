@@ -73,11 +73,12 @@ T2  csv      att/limits.xlsx#Limits  40×2  rows 40 > 30
 2 tables: 0 T0, 1 T1, 1 T2, 0 T3
 ```
 
-`import` writes the format the rule selects; `--out` must end in `.md` (T1, T3)
-or `.csv` (T2). `--sheet` selects a table when the input has several (a sheet
-name, `line N` for Markdown, `table N` for DOCX). `import` and `export` write
-their status line (`T1  markdown a.xlsx#S  -> out.md`) to stderr; their output
-is the file, so stdout stays empty.
+`import` writes the format the rule selects; `--as md|csv|link` forces a format
+instead (an empty table is never written). `--out` must end in `.md` (Markdown
+or link) or `.csv` (CSV). `--sheet` selects a table when the input has several
+(a sheet name, `line N` for Markdown, `table N` for DOCX). `import` and `export`
+write their status line (`T1  markdown a.xlsx#S  -> out.md`) to stderr; their
+output is the file, so stdout stays empty.
 
 `check` prints one line per pipe table outside code blocks and HTML comments:
 
@@ -150,12 +151,12 @@ tblctl classify --json spec.md missing.xlsx
 }
 ```
 
-| Command    | `results`, one object per                                                           | `summary`                         |
-| ---------- | ----------------------------------------------------------------------------------- | --------------------------------- |
-| `classify` | table: `file`, `table`, `rule`, `target`, `rows`, `columns`, `reasons`              | `tables`, `t0`, `t1`, `t2`, `t3`  |
-| `check`    | table: `file`, `line`, `status`, `rule`, `rows`, `columns`, `reasons`               | `tables`, `pass`, `fail`          |
-| `import`   | imported table: `file`, `table`, `rule`, `target`, `out` (`null` for T0), `reasons` | `written` (0 or 1)                |
-| `export`   | worksheet: `table`, `sheet`, `rows`, `columns`                                      | `out` (`null` on error), `sheets` |
+| Command    | `results`, one object per                                                                   | `summary`                         |
+| ---------- | ------------------------------------------------------------------------------------------- | --------------------------------- |
+| `classify` | table: `file`, `table`, `rule`, `target`, `rows`, `columns`, `reasons`                      | `tables`, `t0`, `t1`, `t2`, `t3`  |
+| `check`    | table: `file`, `line`, `status`, `rule`, `rows`, `columns`, `reasons`                       | `tables`, `pass`, `fail`          |
+| `import`   | imported table: `file`, `table`, `rule`, `target`, `out` (`null` if not written), `reasons` | `written` (0 or 1)                |
+| `export`   | worksheet: `table`, `sheet`, `rows`, `columns`                                              | `out` (`null` on error), `sheets` |
 
 Each error has `code`, `message`, `file`, a `hint` when there is one, and the
 fields of its code. Codes: `read_failed`, `unsupported_type`, `no_table`,
