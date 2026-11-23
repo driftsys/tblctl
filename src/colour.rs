@@ -1,7 +1,8 @@
 //! Decides whether cell colour carries meaning.
 //!
-//! Colour is decorative when every data cell's colour depends only on its
-//! column and the parity of its row (column colours and row bands).
+//! With 4 or more data rows, colour is decorative when every data cell's
+//! colour depends only on its column and the parity of its row (column
+//! colours and row bands). Smaller tables are compared by column only.
 
 use anyhow::{Context, Result};
 use quick_xml::events::{BytesStart, Event};
@@ -13,20 +14,37 @@ use std::path::Path;
 /// Cell colour as (fill, font). Each value is the colour as written in the
 /// file: every attribute that identifies it (`rgb`, `theme`, `tint`,
 /// `indexed`, `auto`), for example `rgb=FFFF0000` or `theme=4 tint=0.4`. A
-/// solid fill with no `fgColor` is written as the sentinel `default`. Values
-/// are compared as strings and no theme is resolved.
+/// fill whose `patternType` is not `none` and that has no `fgColor` is written
+/// as the sentinel `default`. `auto` only reaches the fill string: a font
+/// `color` with `auto="1"` becomes `None`. Values are compared as strings and
+/// no theme is resolved.
 pub type Colour = (Option<String>, Option<String>);
 
-/// Returns `true` when two data cells with the same column and the same row
-/// parity have different colours. Each item is (row, col, colour).
+/// Returns `true` when the data cells carry colour that is not decoration.
+/// Each item is (row, col, colour).
+///
+/// With 4 or more data rows, colour is decorative when it depends only on the
+/// column and the parity of the row, so two cells with the same column and
+/// the same row parity but different colours make it meaningful. With fewer
+/// than 4 data rows, row parity is not evidence of banding, so cells are
+/// compared by column only. With exactly 1 data row, any coloured cell makes
+/// it meaningful.
 pub fn varies(cells: &[(u32, u32, Colour)]) -> bool {
+    let mut rows: Vec<u32> = cells.iter().map(|(row, _, _)| *row).collect();
+    rows.sort_unstable();
+    rows.dedup();
+    if rows.len() == 1 {
+        return cells.iter().any(|(_, _, colour)| *colour != (None, None));
+    }
+    let banded = rows.len() >= 4;
     let mut seen: HashMap<(u32, u32), &Colour> = HashMap::new();
     for (row, col, colour) in cells {
-        match seen.get(&(*col, row % 2)) {
+        let key = (*col, if banded { row % 2 } else { 0 });
+        match seen.get(&key) {
             Some(first) if *first != colour => return true,
             Some(_) => {}
             None => {
-                seen.insert((*col, row % 2), colour);
+                seen.insert(key, colour);
             }
         }
     }
@@ -77,6 +95,7 @@ impl SheetColour {
     /// and `end` are the zero-based (row, col) corners of the used range;
     /// row `start.0` is the header. Colour is meaningful when a
     /// conditional-format range overlaps a data cell or `varies` is true.
+    /// Cells with the colour of style 0 are treated as uncoloured.
     pub fn meaningful(&self, start: (u32, u32), end: (u32, u32)) -> bool {
         let first_row = start.0.saturating_add(1);
         if first_row > end.0 {
@@ -88,10 +107,20 @@ impl SheetColour {
         if overlaps {
             return true;
         }
+        // The colour of style 0 is the workbook default (writers such as
+        // Excel give the default font an explicit theme colour), so a cell
+        // with that colour counts as having none.
+        let plain = self.colour_of(0);
         let mut cells = Vec::new();
         for row in first_row..=end.0 {
             for col in start.1..=end.1 {
-                cells.push((row, col, self.cell_colour(row, col)));
+                let colour = self.cell_colour(row, col);
+                let colour = if colour == plain {
+                    (None, None)
+                } else {
+                    colour
+                };
+                cells.push((row, col, colour));
             }
         }
         varies(&cells)
@@ -433,6 +462,46 @@ mod tests {
     fn coloured_total_row_is_meaningful() {
         let cells = grid(|row, _| if row == 6 { red() } else { none() });
         assert!(varies(&cells));
+    }
+
+    #[test]
+    fn one_data_row_with_one_red_cell_is_meaningful() {
+        let cells = vec![(1, 0, none()), (1, 1, red())];
+        assert!(varies(&cells));
+    }
+
+    #[test]
+    fn one_data_row_without_colour_is_not_meaningful() {
+        let cells = vec![(1, 0, none()), (1, 1, none())];
+        assert!(!varies(&cells));
+    }
+
+    #[test]
+    fn two_data_rows_with_different_colours_in_a_column_are_meaningful() {
+        let green = (Some("FF00FF00".to_string()), None);
+        let cells = vec![(1, 0, green), (2, 0, red())];
+        assert!(varies(&cells));
+    }
+
+    #[test]
+    fn two_data_rows_with_one_column_colour_are_not_meaningful() {
+        let cells = vec![(1, 0, red()), (2, 0, red()), (1, 1, none()), (2, 1, none())];
+        assert!(!varies(&cells));
+    }
+
+    #[test]
+    fn three_data_rows_green_red_green_are_meaningful() {
+        let green = || (Some("FF00FF00".to_string()), None);
+        let cells = vec![(1, 0, green()), (2, 0, red()), (3, 0, green())];
+        assert!(varies(&cells));
+    }
+
+    #[test]
+    fn four_data_rows_with_row_bands_are_decorative() {
+        let cells: Vec<_> = (1..=4)
+            .map(|row| (row, 0, if row % 2 == 0 { red() } else { none() }))
+            .collect();
+        assert!(!varies(&cells));
     }
 
     use std::io::Write as _;

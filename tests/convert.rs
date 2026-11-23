@@ -1311,6 +1311,10 @@ fn fill() -> Format {
     Format::new().set_background_color(0xFF0000)
 }
 
+fn green() -> Format {
+    Format::new().set_background_color(0x00FF00)
+}
+
 fn rule_of(v: &serde_json::Value, i: usize) -> (String, Vec<String>) {
     let o = &v[i];
     let reasons = o["reasons"]
@@ -1377,8 +1381,17 @@ fn colour_is_t3_unless_decorative() {
         offset_data(wb.worksheet_from_index(0).unwrap());
     });
 
-    let files = [varied, header, bands, cond, offset, offset_header];
-    let want = ["t3", "t1", "t1", "t3", "t3", "t1"];
+    let small = d.path().join("small.xlsx");
+    xlsx(&small, &[("S", rows(2))], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        ws.write_string_with_format(1, 1, "item 0", &green())
+            .unwrap();
+        ws.write_string_with_format(2, 1, "item 1", &fill())
+            .unwrap();
+    });
+
+    let files = [varied, header, bands, cond, offset, offset_header, small];
+    let want = ["t3", "t1", "t1", "t3", "t3", "t1", "t3"];
     for (i, rule) in want.iter().enumerate() {
         // One call per file: identical tables in one call are duplicates (T0).
         let v = classify_json(&files[i..=i]);

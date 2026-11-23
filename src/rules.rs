@@ -330,5 +330,11 @@ mod tests {
             set(&mut g.facts);
             assert_eq!(classify(&[g], &LIMITS)[0].rule, Rule::T3);
         }
+        let mut g = grid(&[&["a"], &["1"]]);
+        g.facts.colour = true;
+        assert!(classify(&[g], &LIMITS)[0]
+            .reasons
+            .iter()
+            .any(|r| r == "colour"));
     }
 }

@@ -33,7 +33,10 @@ missed case.
   Simple, but striped rows also become T3.
 - **B. Variation that is not decoration.** Ignore the header, whole-column
   colour and alternating row bands. Any other variation counts, and so does any
-  conditional-formatting rule on data cells. **Chosen by the user.**
+  conditional-formatting rule on data cells. **Chosen by the user.** After the
+  final review on 2026-11-23 the user chose to count row parity only from 4 data
+  rows, and to treat any colour in a 1-data-row table as meaningful, because the
+  parity rule missed status tables of 1 to 3 rows.
 - **C. REVIEW state instead of T3.** Depends on #10, whose REVIEW trigger is not
   decided.
 
@@ -55,12 +58,17 @@ used range are data cells, including empty cells inside the range.
 
 Colours are compared as written, without resolving themes to RGB.
 
-**Decorative rule.** Colour on data cells is decorative when the colour of every
-data cell depends only on its column and on whether its row number is even or
-odd. This covers one colour for the whole table, whole-column colour,
-alternating row bands, and bands combined with column colour. Otherwise the
-colour is meaningful. A highlighted total row is meaningful under this rule;
-this is accepted (see Anti-goal).
+**Decorative rule.** With 4 or more data rows, colour on data cells is
+decorative when the colour of every data cell depends only on its column and on
+whether its row number is even or odd. This covers one colour for the whole
+table, whole-column colour, alternating row bands, and bands combined with
+column colour. Otherwise the colour is meaningful. A highlighted total row is
+meaningful under this rule; this is accepted (see Anti-goal). With fewer than 4
+data rows, row parity is not evidence of banding, so cells are compared by
+column only: two data cells in the same column with different colours are
+meaningful. With exactly 1 data row, any data cell whose colour is not (none,
+none) is meaningful. A cell with the colour of style 0 counts as (none, none),
+because writers give the default font an explicit theme colour.
 
 **Conditional formatting.** Any `conditionalFormatting` element in the sheet XML
 whose `sqref` overlaps a data cell makes the colour meaningful.
