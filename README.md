@@ -103,10 +103,11 @@ from XLSB, so every XLSB table is T3 (link) with the reason
 unknown (XLSB)`. Images are detected in XLSX and DOCX, not in XLS,
 XLSB or ODS.
 
-Meaningful cell colour (fills, font colours and conditional formats that are not
-header-only, whole-column or alternating row bands) is detected in XLSX and
-XLSM, and makes a table T3 with the reason `colour`. It is not detected in XLS,
-XLSB, ODS or DOCX.
+Meaningful cell colour is detected in XLSX and XLSM and makes a table T3 with
+the reason `colour`. Meaningful colour is fills and font colours that are not
+header-only, whole-column or alternating row bands (bands are counted only from
+4 data rows), and any conditional format on data cells. It is not detected in
+XLS, XLSB, ODS or DOCX.
 
 On a terminal, `PASS` is green, `FAIL` red, and the `classify` rule is dim (T0),
 green (T1, T2) or yellow (T3). Set `NO_COLOR` to a non-empty value to turn
