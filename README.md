@@ -57,12 +57,12 @@ tblctl export docs/limits.md --out limits.xlsx
 
 Rules, first match wins:
 
-| Rule | Target   | When                                                                       |
-| ---- | -------- | -------------------------------------------------------------------------- |
-| T0   | skip     | empty, duplicate of an earlier table, or a revision history                |
-| T1   | Markdown | within the size limits, one visible sheet, no merged data cells, no images |
-| T2   | CSV      | larger, one visible sheet, no merged data cells, no images, no formulas    |
-| T3   | link     | everything else: a one-line link to the source with sheet and size         |
+| Rule | Target   | When                                                                                  |
+| ---- | -------- | ------------------------------------------------------------------------------------- |
+| T0   | skip     | empty, duplicate of an earlier table, or a revision history                           |
+| T1   | Markdown | within the size limits, one visible sheet, no merged data cells, no images, no colour |
+| T2   | CSV      | larger, one visible sheet, no merged data cells, no images, no colour, no formulas    |
+| T3   | link     | everything else: a one-line link to the source with sheet and size                    |
 
 `classify` prints one line per table and a summary line, except when no input
 could be read:
@@ -103,6 +103,11 @@ from XLSB, so every XLSB table is T3 (link) with the reason
 `merged cells
 unknown (XLSB)`. Images are detected in XLSX and DOCX, not in XLS,
 XLSB or ODS.
+
+Meaningful cell colour (fills, font colours and conditional formats that are not
+header-only, whole-column or alternating row bands) is detected in XLSX and
+XLSM, and makes a table T3 with the reason `colour`. It is not detected in XLS,
+XLSB, ODS or DOCX.
 
 On a terminal, `PASS` is green, `FAIL` red, and the `classify` rule is dim (T0),
 green (T1, T2) or yellow (T3). Set `NO_COLOR` to a non-empty value to turn

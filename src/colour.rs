@@ -3,9 +3,6 @@
 //! Colour is decorative when every data cell's colour depends only on its
 //! column and the parity of its row (column colours and row bands).
 
-// Task 3 (the `read.rs` caller) uses these items; remove the allow then.
-#![allow(dead_code)]
-
 use anyhow::{Context, Result};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
@@ -15,8 +12,9 @@ use std::path::Path;
 
 /// Cell colour as (fill, font). Each value is the colour as written in the
 /// file: every attribute that identifies it (`rgb`, `theme`, `tint`,
-/// `indexed`), for example `rgb=FFFF0000` or `theme=4 tint=0.4`. Values are
-/// compared as strings and no theme is resolved.
+/// `indexed`, `auto`), for example `rgb=FFFF0000` or `theme=4 tint=0.4`. A
+/// solid fill with no `fgColor` is written as the sentinel `default`. Values
+/// are compared as strings and no theme is resolved.
 pub type Colour = (Option<String>, Option<String>);
 
 /// Returns `true` when two data cells with the same column and the same row

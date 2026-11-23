@@ -1,6 +1,8 @@
 use assert_cmd::Command;
 use predicates::str::contains;
-use rust_xlsxwriter::{Formula, Workbook};
+use rust_xlsxwriter::{
+    ConditionalFormatCell, ConditionalFormatCellRule, Format, Formula, Workbook,
+};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -1303,4 +1305,91 @@ fn import_as_md_json_writes_aligned_columns_by_default() {
         std::fs::read_to_string(&md).unwrap(),
         "| Id     | Description |\n| ------ | ----------- |\n| Speed  | a           |\n| Torque | bc          |\n"
     );
+}
+
+fn fill() -> Format {
+    Format::new().set_background_color(0xFF0000)
+}
+
+fn rule_of(v: &serde_json::Value, i: usize) -> (String, Vec<String>) {
+    let o = &v[i];
+    let reasons = o["reasons"]
+        .as_array()
+        .map(|a| a.iter().map(|r| r.as_str().unwrap().to_string()).collect())
+        .unwrap_or_default();
+    (o["rule"].as_str().unwrap().to_string(), reasons)
+}
+
+#[test]
+fn colour_is_t3_unless_decorative() {
+    let d = tempfile::tempdir().unwrap();
+    let varied = d.path().join("varied.xlsx");
+    xlsx(&varied, &[("S", rows(4))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_string_with_format(3, 1, "item 2", &fill())
+            .unwrap();
+    });
+    let header = d.path().join("header.xlsx");
+    xlsx(&header, &[("S", rows(3))], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        ws.write_string_with_format(0, 0, "id", &fill()).unwrap();
+        ws.write_string_with_format(0, 1, "name", &fill()).unwrap();
+    });
+    let bands = d.path().join("bands.xlsx");
+    xlsx(&bands, &[("S", rows(4))], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        for r in [2u32, 4] {
+            ws.write_string_with_format(r, 0, (r - 1).to_string(), &fill())
+                .unwrap();
+            ws.write_string_with_format(r, 1, format!("item {}", r - 1), &fill())
+                .unwrap();
+        }
+    });
+    let cond = d.path().join("cond.xlsx");
+    xlsx(&cond, &[("S", rows(3))], |wb| {
+        let cf = ConditionalFormatCell::new()
+            .set_rule(ConditionalFormatCellRule::GreaterThan(1))
+            .set_format(fill());
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .add_conditional_format(1, 0, 3, 0, &cf)
+            .unwrap();
+    });
+    let offset = d.path().join("offset.xlsx");
+    let offset_data = |ws: &mut rust_xlsxwriter::Worksheet| {
+        for (r, row) in rows(4).iter().enumerate() {
+            for (c, v) in row.iter().enumerate() {
+                ws.write_string(r as u32 + 2, c as u16 + 2, v).unwrap();
+            }
+        }
+        ws.write_string_with_format(2, 2, "id", &fill()).unwrap();
+        ws.write_string_with_format(2, 3, "name", &fill()).unwrap();
+    };
+    xlsx(&offset, &[("S", vec![])], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        offset_data(ws);
+        ws.write_string_with_format(4, 3, "item 1", &fill())
+            .unwrap();
+    });
+    let offset_header = d.path().join("offset_header.xlsx");
+    xlsx(&offset_header, &[("S", vec![])], |wb| {
+        offset_data(wb.worksheet_from_index(0).unwrap());
+    });
+
+    let files = [varied, header, bands, cond, offset, offset_header];
+    let want = ["t3", "t1", "t1", "t3", "t3", "t1"];
+    for (i, rule) in want.iter().enumerate() {
+        // One call per file: identical tables in one call are duplicates (T0).
+        let v = classify_json(&files[i..=i]);
+        let (got, reasons) = rule_of(&v, 0);
+        assert_eq!(&got, rule, "{:?}", files[i]);
+        if *rule == "t3" {
+            assert!(
+                reasons.contains(&"colour".to_string()),
+                "{:?}: {reasons:?}",
+                files[i]
+            );
+        }
+    }
 }

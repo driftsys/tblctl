@@ -144,6 +144,9 @@ pub fn classify(grids: &[Grid], limits: &Limits) -> Vec<Verdict> {
             if g.facts.images {
                 structure.push("images".into());
             }
+            if g.facts.colour {
+                structure.push("colour".into());
+            }
             let size = size_reasons(g, limits);
             if structure.is_empty() && size.is_empty() {
                 return Verdict {
@@ -320,6 +323,7 @@ mod tests {
             |f: &mut Facts| f.data_merges = true,
             |f: &mut Facts| f.merges_unknown = true,
             |f: &mut Facts| f.images = true,
+            |f: &mut Facts| f.colour = true,
             |f: &mut Facts| f.visible_sheets = 2,
         ] {
             let mut g = grid(&[&["a"], &["1"]]);

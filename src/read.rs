@@ -1,5 +1,6 @@
 //! Reads tables from Markdown, CSV, workbook and DOCX files.
 
+use crate::colour;
 use crate::error::Error;
 use crate::markdown;
 use crate::table::{Facts, Grid};
@@ -187,6 +188,10 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
         Sheets::Ods(_) => ods::merges(path).with_context(|| file.to_string())?,
         _ => Default::default(),
     };
+    let colours = match wb {
+        Sheets::Xlsx(_) => colour::xlsx_meaningful(path).with_context(|| file.to_string())?,
+        _ => Default::default(),
+    };
     let mut out = Vec::new();
     for name in &visible {
         let range = wb
@@ -246,6 +251,10 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
                 merges_unknown: matches!(wb, Sheets::Xlsb(_)),
                 formulas,
                 images: any_unmatched_picture || pictures.iter().any(|p| p == name),
+                colour: match (colours.get(name), range.start(), range.end()) {
+                    (Some(c), Some(start), Some(end)) => c.meaningful(start, end),
+                    _ => false,
+                },
                 visible_sheets: visible.len(),
                 markdown_longest_cell: None,
             },

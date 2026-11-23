@@ -25,6 +25,8 @@ pub struct Facts {
     pub formulas: bool,
     /// The table or sheet holds an image.
     pub images: bool,
+    /// Data cells carry meaningful colour (XLSX only).
+    pub colour: bool,
     /// Number of visible sheets in the source workbook (1 for other formats).
     pub visible_sheets: usize,
     /// For a Markdown table, the length of the longest cell as rendered,
