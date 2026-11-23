@@ -101,9 +101,18 @@ impl SheetColour {
 }
 
 fn attr(e: &BytesStart, key: &str) -> Option<String> {
+    attr_by(e, |k| k == key)
+}
+
+/// Like `attr`, but matches the attribute name without its namespace prefix.
+fn attr_local(e: &BytesStart, key: &str) -> Option<String> {
+    attr_by(e, |k| k.rsplit(':').next() == Some(key))
+}
+
+fn attr_by(e: &BytesStart, matches: impl Fn(&str) -> bool) -> Option<String> {
     e.attributes()
         .flatten()
-        .find(|a| a.key.as_ref() == key)
+        .find(|a| matches(a.key.as_ref()))
         .map(|a| {
             let raw = a.value.into_owned();
             quick_xml::escape::unescape(&raw).map_or_else(|_| raw.clone(), |v| v.into_owned())
@@ -156,7 +165,7 @@ fn styles(xml: &str) -> Result<Vec<Colour>> {
         let event = reader.read_event()?;
         match event {
             Event::Eof => break,
-            Event::Start(e) | Event::Empty(e) => match e.name().as_ref() {
+            Event::Start(e) | Event::Empty(e) => match e.local_name().as_ref() {
                 "fonts" => section = Section::Fonts,
                 "fills" => section = Section::Fills,
                 "cellXfs" => section = Section::CellXfs,
@@ -191,7 +200,7 @@ fn styles(xml: &str) -> Result<Vec<Colour>> {
                 }
                 _ => {}
             },
-            Event::End(e) if matches!(e.name().as_ref(), "fonts" | "fills" | "cellXfs") => {
+            Event::End(e) if matches!(e.local_name().as_ref(), "fonts" | "fills" | "cellXfs") => {
                 section = Section::None;
             }
             _ => {}
@@ -262,7 +271,7 @@ fn sheet_colour(xml: &str, styles: &[Colour]) -> Result<SheetColour> {
             Event::Eof => break,
             Event::Start(e) | Event::Empty(e) => {
                 let num = |k: &str| attr(&e, k).and_then(|v| v.parse::<u32>().ok());
-                match e.name().as_ref() {
+                match e.local_name().as_ref() {
                     "col" => {
                         if let (Some(min), Some(max), Some(style)) =
                             (num("min"), num("max"), num("style"))
@@ -328,7 +337,7 @@ pub fn xlsx_meaningful(path: &Path) -> Result<HashMap<String, SheetColour>> {
     loop {
         match reader.read_event()? {
             Event::Eof => break,
-            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == "Relationship" => {
+            Event::Start(e) | Event::Empty(e) if e.local_name().as_ref() == "Relationship" => {
                 if let (Some(id), Some(target)) = (attr(&e, "Id"), attr(&e, "Target")) {
                     targets.insert(id, part_path(&target));
                 }
@@ -342,8 +351,8 @@ pub fn xlsx_meaningful(path: &Path) -> Result<HashMap<String, SheetColour>> {
     loop {
         match reader.read_event()? {
             Event::Eof => break,
-            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == "sheet" => {
-                if let (Some(name), Some(id)) = (attr(&e, "name"), attr(&e, "r:id")) {
+            Event::Start(e) | Event::Empty(e) if e.local_name().as_ref() == "sheet" => {
+                if let (Some(name), Some(id)) = (attr(&e, "name"), attr_local(&e, "id")) {
                     sheets.push((name, id));
                 }
             }
@@ -527,11 +536,13 @@ mod tests {
 
     #[test]
     fn missing_s_uses_style_zero() {
+        // A2 is present without `s` inside a filled row: it is style 0, not
+        // the row style. Rows 2 and 4 share a parity.
         let body = r#"<sheetData><row r="1"><c r="A1"/></row>
-            <row r="2"><c r="A2"><v>1</v></c></row>
-            <row r="3"><c r="A3" s="0"><v>1</v></c></row></sheetData>"#;
-        let sc = read(&sheet(body));
-        assert!(!sc.meaningful((0, 0), (2, 0)));
+            <row r="2" s="1" customFormat="1"><c r="A2"><v>1</v></c></row>
+            <row r="3"><c r="A3" s="0"><v>1</v></c></row>
+            <row r="4"><c r="A4" s="0"><v>1</v></c></row></sheetData>"#;
+        assert!(!read(&sheet(body)).meaningful((0, 0), (3, 0)));
     }
 
     #[test]
@@ -542,15 +553,17 @@ mod tests {
 
     #[test]
     fn empty_cell_takes_row_then_column_style() {
-        // Row 3 has a fill and only cell A3; B3 and C3 are absent. Rows 3
+        // Row 3 has a fill; A3 has no `s`, and B3 and C3 are absent. Rows 3
         // and 5 share a parity, so the fill is not a row band.
         let body = r#"<sheetData>
             <row r="1"><c r="A1"/></row>
             <row r="2"><c r="A2"/><c r="B2"/><c r="C2"/></row>
-            <row r="3" s="1" customFormat="1"><c r="A3" s="1"/></row>
+            <row r="3" s="1" customFormat="1"><c r="A3"/></row>
             <row r="4"><c r="A4"/><c r="B4"/><c r="C4"/></row>
             <row r="5"><c r="A5"/><c r="B5"/><c r="C5"/></row></sheetData>"#;
-        assert!(read(&sheet(body)).meaningful((0, 0), (4, 2)));
+        // A3 has no `s`, so only B3 and C3 can carry the row style: confirm
+        // by checking a range whose only coloured cells are absent ones.
+        assert!(read(&sheet(body)).meaningful((0, 1), (4, 2)));
 
         // A column style covers every row of one column: decorative.
         let body = r#"<cols><col min="2" max="2" style="1"/></cols><sheetData>
@@ -559,6 +572,62 @@ mod tests {
             <row r="3"><c r="A3"/></row>
             <row r="4"><c r="A4"/></row></sheetData>"#;
         assert!(!read(&sheet(body)).meaningful((0, 0), (3, 2)));
+    }
+
+    #[test]
+    fn cell_style_beats_column_style() {
+        // Column B is red. B3 is present with s="0", so it is plain and the
+        // column is not uniform: meaningful only if the cell style wins.
+        let body = r#"<cols><col min="2" max="2" style="1"/></cols><sheetData>
+            <row r="1"><c r="A1"/></row>
+            <row r="2"><c r="A2"/></row>
+            <row r="3"><c r="B3" s="0"/></row>
+            <row r="4"><c r="A4"/></row>
+            <row r="5"><c r="A5"/></row></sheetData>"#;
+        assert!(read(&sheet(body)).meaningful((0, 1), (4, 1)));
+    }
+
+    #[test]
+    fn row_style_beats_column_style() {
+        // Column B is red; row 3 is plain (style 0, customFormat) and B3 is
+        // absent. Row 3 has the same parity as row 5, whose B5 is absent and
+        // takes the column style: meaningful only if the row style wins.
+        let body = r#"<cols><col min="2" max="2" style="1"/></cols><sheetData>
+            <row r="1"><c r="A1"/></row>
+            <row r="2"><c r="A2"/></row>
+            <row r="3" s="0" customFormat="1"><c r="A3"/></row>
+            <row r="4"><c r="A4"/></row>
+            <row r="5"><c r="A5"/></row></sheetData>"#;
+        assert!(read(&sheet(body)).meaningful((0, 1), (4, 1)));
+    }
+
+    #[test]
+    fn prefixed_spreadsheetml_is_read() {
+        let workbook = r#"<x:workbook xmlns:x="m" xmlns:rel="r"><x:sheets>
+            <x:sheet name="S" sheetId="1" rel:id="rId1"/></x:sheets></x:workbook>"#;
+        let styles = r#"<x:styleSheet xmlns:x="m">
+            <x:fonts count="1"><x:font><x:sz val="11"/></x:font></x:fonts>
+            <x:fills count="2">
+              <x:fill><x:patternFill patternType="none"/></x:fill>
+              <x:fill><x:patternFill patternType="solid"><x:fgColor rgb="FFFF0000"/></x:patternFill></x:fill>
+            </x:fills>
+            <x:cellXfs count="2"><x:xf fontId="0" fillId="0"/><x:xf fontId="0" fillId="1"/></x:cellXfs>
+            </x:styleSheet>"#;
+        let sheet_xml = r#"<x:worksheet xmlns:x="m"><x:sheetData>
+            <x:row r="1"><x:c r="A1"/></x:row>
+            <x:row r="2"><x:c r="A2" s="1"/></x:row>
+            <x:row r="3"><x:c r="A3" s="0"/></x:row>
+            <x:row r="4"><x:c r="A4" s="0"/></x:row></x:sheetData></x:worksheet>"#;
+        let rels = r#"<Relationships>
+            <Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#;
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", rels),
+            ("xl/styles.xml", styles),
+            ("xl/worksheets/sheet1.xml", sheet_xml),
+        ]);
+        let sc = xlsx_meaningful(f.path()).unwrap().remove("S").unwrap();
+        assert!(sc.meaningful((0, 0), (3, 0)));
     }
 
     #[test]
