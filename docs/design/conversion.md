@@ -34,13 +34,16 @@ cells, formulas, images, meaningful colour, number of visible sheets).
 - Colour is read for XLSX and XLSM only, by `src/colour.rs` with `zip` +
   `quick-xml` from `xl/styles.xml`, the workbook relationships (to find each
   sheet part) and the sheet parts. The colour of a data cell is (fill, font) as
-  written, without theme resolution. The style is the cell `s`, else the row `s`
-  with `customFormat`, else the column style, else 0; a cell with the colour of
-  style 0 is uncoloured. The header is the first row of the used range. The rule
-  is [AD-0006](../decisions/0006-meaningful-colour-rule.md). For XLS, XLSB, ODS
-  and DOCX colour is not detected.
+  written, without theme resolution. A `<c>` element without `s` uses style 0. A
+  cell with no `<c>` element uses the row `s` with `customFormat`, else the
+  column style, else style 0. A cell with the colour of style 0 is uncoloured.
+  The header is the first row of the used range. The rule is
+  [AD-0006](../decisions/0006-meaningful-colour-rule.md). For XLS, XLSB, ODS and
+  DOCX colour is not detected.
 - Images are detected for XLSX only. `calamine` does not expose images in XLS,
-  XLSB or ODS files, so a table with images in those formats is not marked.
+  XLSB or ODS files, so a table with images in those formats is not marked. In
+  XLSX, only the pictures that `calamine` reports (`pictures_with_metadata`)
+  count; charts and shapes are not detected as images.
 - Dates are written as `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM:SS` when the time is
   not midnight, for XLSX, XLS and XLSB dates and ODS ISO dates alike. Whole
   numbers are written without a decimal point.
@@ -83,8 +86,9 @@ Limits of the colour reader: cells or rows without an `r` attribute are dropped
 or misnumbered; conditional formats in `x14` `extLst` are not read; `../`
 relationship targets are not normalised; `gradientFill` and number-format colour
 (`[Red]`) are not detected; colours equal but encoded differently (`rgb` versus
-`theme`) compare as different; a hyperlink cell style (blue font) can give a
-false T3.
+`theme`) compare as different; colour set on part of a cell's text (rich text)
+is not detected, only the cell style's font colour is; a hyperlink cell style
+(blue font) can give a false T3.
 
 ## Commands
 

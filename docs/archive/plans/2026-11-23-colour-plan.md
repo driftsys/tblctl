@@ -16,7 +16,7 @@ already does for ODS and DOCX). `read.rs` sets a new `Facts.colour`, and
 **Tech Stack:** Rust 2021, `zip` 9, `quick-xml` 0.42, calamine 0.38 (cells),
 `rust_xlsxwriter` 0.102 (test fixtures).
 
-**Spec:** `docs/wip/2026-11-23-colour-design.md`
+**Spec:** `docs/archive/specs/2026-11-23-colour-design.md`
 
 ## Global Constraints
 

@@ -2,7 +2,9 @@
 //!
 //! With 4 or more data rows, colour is decorative when every data cell's
 //! colour depends only on its column and the parity of its row (column
-//! colours and row bands). Smaller tables are compared by column only.
+//! colours and row bands). With 2 or 3 data rows, cells are compared by column
+//! only. With 1 data row, any data cell whose colour differs from the colour
+//! of style 0 is meaningful.
 
 use anyhow::{Context, Result};
 use quick_xml::events::{BytesStart, Event};
@@ -73,8 +75,9 @@ impl SheetColour {
         self.styles.get(style).cloned().unwrap_or((None, None))
     }
 
-    /// Colour of one cell: its own style, else its row style, else its
-    /// column style, else style 0.
+    /// Colour of one cell. A `<c>` element without `s` uses style 0. A cell
+    /// with no `<c>` element uses its row style (with `customFormat`), else
+    /// its column style, else style 0.
     fn cell_colour(&self, row: u32, col: u32) -> Colour {
         let style = self
             .cells

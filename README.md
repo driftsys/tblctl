@@ -101,13 +101,17 @@ Merged data cells are detected in XLSX, XLS, ODS and DOCX. They cannot be read
 from XLSB, so every XLSB table is T3 (link) with the reason
 `merged cells
 unknown (XLSB)`. Images are detected in XLSX and DOCX, not in XLS,
-XLSB or ODS.
+XLSB or ODS. In XLSX, only the pictures that `calamine` reports count as images;
+charts and shapes are not detected as images.
 
 Meaningful cell colour is detected in XLSX and XLSM and makes a table T3 with
 the reason `colour`. Meaningful colour is fills and font colours that are not
 header-only, whole-column or alternating row bands (bands are counted only from
-4 data rows), and any conditional format on data cells. It is not detected in
-XLS, XLSB, ODS or DOCX.
+4 data rows), and any conditional format on data cells. With one data row, any
+data cell whose colour differs from the colour of the default cell style is
+meaningful. Colour set on part of a cell's text (rich text) is not detected;
+only the cell style's font colour is. It is not detected in XLS, XLSB, ODS or
+DOCX.
 
 On a terminal, `PASS` is green, `FAIL` red, and the `classify` rule is dim (T0),
 green (T1, T2) or yellow (T3). Set `NO_COLOR` to a non-empty value to turn
