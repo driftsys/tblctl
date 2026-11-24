@@ -1406,3 +1406,45 @@ fn colour_is_t3_unless_decorative() {
         }
     }
 }
+
+/// Copies a zip file, replacing the entry `name` with `body`.
+fn replace_zip_entry(src: &Path, dst: &Path, name: &str, body: &str) {
+    let mut zin = zip::ZipArchive::new(std::fs::File::open(src).unwrap()).unwrap();
+    let mut zout = zip::ZipWriter::new(std::fs::File::create(dst).unwrap());
+    for i in 0..zin.len() {
+        let mut entry = zin.by_index(i).unwrap();
+        let entry_name = entry.name().unwrap().to_string();
+        zout.start_file(&entry_name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        if entry_name == name {
+            zout.write_all(body.as_bytes()).unwrap();
+        } else {
+            std::io::copy(&mut entry, &mut zout).unwrap();
+        }
+    }
+    zout.finish().unwrap();
+}
+
+#[test]
+fn a_malformed_extra_sheet_part_does_not_fail_the_file() {
+    let d = tempfile::tempdir().unwrap();
+    let good = d.path().join("good.xlsx");
+    xlsx(&good, &[("S", rows(4)), ("Hidden", rows(4))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_string_with_format(3, 1, "item 2", &fill())
+            .unwrap();
+        wb.worksheet_from_index(1).unwrap().set_hidden(true);
+    });
+    let bad_sheet = d.path().join("bad_sheet.xlsx");
+    replace_zip_entry(
+        &good,
+        &bad_sheet,
+        "xl/worksheets/sheet2.xml",
+        "<worksheet><sheetData></row>",
+    );
+
+    // The valid sheet keeps its colour result when another sheet part is bad.
+    let v = classify_json(&[bad_sheet]);
+    assert_eq!(rule_of(&v, 0).0, "t3");
+}

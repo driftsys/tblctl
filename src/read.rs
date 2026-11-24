@@ -189,7 +189,7 @@ fn workbook_tables(path: &Path, file: &str) -> Result<Vec<Grid>> {
         _ => Default::default(),
     };
     let colours = match wb {
-        Sheets::Xlsx(_) => colour::xlsx_meaningful(path).with_context(|| file.to_string())?,
+        Sheets::Xlsx(_) => colour::xlsx_meaningful(path),
         _ => Default::default(),
     };
     let mut out = Vec::new();

@@ -349,7 +349,16 @@ fn part_path(target: &str) -> String {
 
 /// Colour facts of each sheet of an XLSX or XLSM file, keyed by sheet name,
 /// read from the styles part, the workbook and the sheet parts.
-pub fn xlsx_meaningful(path: &Path) -> Result<HashMap<String, SheetColour>> {
+///
+/// Colour is extra information: a part that is missing or cannot be parsed
+/// never makes the file unreadable. A bad workbook, relationships or styles
+/// part gives no facts for any sheet; a bad sheet part gives none for that
+/// sheet only.
+pub fn xlsx_meaningful(path: &Path) -> HashMap<String, SheetColour> {
+    try_xlsx_meaningful(path).unwrap_or_default()
+}
+
+fn try_xlsx_meaningful(path: &Path) -> Result<HashMap<String, SheetColour>> {
     let mut zip = zip::ZipArchive::new(std::fs::File::open(path)?)?;
     let styles = match zip_text(&mut zip, "xl/styles.xml")? {
         Some(xml) => self::styles(&xml).context("xl/styles.xml")?,
@@ -392,13 +401,12 @@ pub fn xlsx_meaningful(path: &Path) -> Result<HashMap<String, SheetColour>> {
         let Some(part) = targets.get(&id) else {
             continue;
         };
-        let Some(xml) = zip_text(&mut zip, part)? else {
+        let Ok(Some(xml)) = zip_text(&mut zip, part) else {
             continue;
         };
-        out.insert(
-            name.clone(),
-            sheet_colour(&xml, &styles).with_context(|| format!("sheet {name}"))?,
-        );
+        if let Ok(colour) = sheet_colour(&xml, &styles) {
+            out.insert(name, colour);
+        }
     }
     Ok(out)
 }
@@ -559,7 +567,7 @@ mod tests {
             ("xl/styles.xml", STYLES),
             ("xl/worksheets/sheet1.xml", sheet_xml),
         ]);
-        xlsx_meaningful(f.path()).unwrap().remove("S").unwrap()
+        xlsx_meaningful(f.path()).remove("S").unwrap()
     }
 
     /// Header row 1, data rows 2..=5, columns A..=C (zero-based (0,0)-(4,2)).
@@ -693,7 +701,7 @@ mod tests {
             ("xl/styles.xml", styles),
             ("xl/worksheets/sheet1.xml", sheet_xml),
         ]);
-        let sc = xlsx_meaningful(f.path()).unwrap().remove("S").unwrap();
+        let sc = xlsx_meaningful(f.path()).remove("S").unwrap();
         assert!(sc.meaningful((0, 0), (3, 0)));
     }
 
@@ -736,7 +744,7 @@ mod tests {
                 &sheet(&plain_rows(&[("B3", 1)])),
             ),
         ]);
-        let sc = xlsx_meaningful(f.path()).unwrap().remove("S").unwrap();
+        let sc = xlsx_meaningful(f.path()).remove("S").unwrap();
         assert!(sc.meaningful(START, END));
         // The relative form is exercised by every other test.
     }
@@ -751,7 +759,7 @@ mod tests {
                 &sheet(&plain_rows(&[("B3", 1)])),
             ),
         ]);
-        let sc = xlsx_meaningful(f.path()).unwrap().remove("S").unwrap();
+        let sc = xlsx_meaningful(f.path()).remove("S").unwrap();
         assert!(!sc.meaningful(START, END));
     }
 
@@ -762,6 +770,147 @@ mod tests {
             ("xl/_rels/workbook.xml.rels", RELS),
             ("xl/styles.xml", STYLES),
         ]);
-        assert!(xlsx_meaningful(f.path()).unwrap().is_empty());
+        assert!(xlsx_meaningful(f.path()).is_empty());
+    }
+
+    #[test]
+    fn missing_workbook_part_gives_no_facts() {
+        let f = zip_xlsx(&[
+            ("xl/_rels/workbook.xml.rels", RELS),
+            ("xl/styles.xml", STYLES),
+            (
+                "xl/worksheets/sheet1.xml",
+                &sheet(&plain_rows(&[("B3", 1)])),
+            ),
+        ]);
+        assert!(xlsx_meaningful(f.path()).is_empty());
+    }
+
+    #[test]
+    fn malformed_workbook_or_styles_part_gives_no_facts() {
+        let sheet_xml = sheet(&plain_rows(&[("B3", 1)]));
+        let bad = "<a></b>";
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", bad),
+            ("xl/_rels/workbook.xml.rels", RELS),
+            ("xl/styles.xml", STYLES),
+            ("xl/worksheets/sheet1.xml", &sheet_xml),
+        ]);
+        assert!(xlsx_meaningful(f.path()).is_empty());
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", WORKBOOK),
+            ("xl/_rels/workbook.xml.rels", bad),
+            ("xl/styles.xml", STYLES),
+            ("xl/worksheets/sheet1.xml", &sheet_xml),
+        ]);
+        assert!(xlsx_meaningful(f.path()).is_empty());
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", WORKBOOK),
+            ("xl/_rels/workbook.xml.rels", RELS),
+            ("xl/styles.xml", bad),
+            ("xl/worksheets/sheet1.xml", &sheet_xml),
+        ]);
+        assert!(xlsx_meaningful(f.path()).is_empty());
+    }
+
+    #[test]
+    fn malformed_sheet_part_is_skipped_and_others_are_read() {
+        let workbook = r#"<workbook xmlns:r="r"><sheets>
+            <sheet name="S" sheetId="1" r:id="rId1"/>
+            <sheet name="Bad" sheetId="2" r:id="rId2"/></sheets></workbook>"#;
+        let rels = r#"<Relationships>
+            <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
+            <Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>"#;
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", rels),
+            ("xl/styles.xml", STYLES),
+            (
+                "xl/worksheets/sheet1.xml",
+                &sheet(&plain_rows(&[("B3", 1)])),
+            ),
+            ("xl/worksheets/sheet2.xml", "<worksheet><sheetData></row>"),
+        ]);
+        let mut facts = xlsx_meaningful(f.path());
+        assert!(!facts.contains_key("Bad"));
+        assert!(facts.remove("S").unwrap().meaningful(START, END));
+    }
+
+    /// Styles with one fill per entry of `fgs`, each a `fgColor` attribute
+    /// list; style 0 is plain and style n uses fill n.
+    fn read_fills(fgs: &[&str], sheet_xml: &str) -> SheetColour {
+        let mut fills = String::from(r#"<fill><patternFill patternType="none"/></fill>"#);
+        let mut xfs = String::from(r#"<xf fontId="0" fillId="0"/>"#);
+        for (i, fg) in fgs.iter().enumerate() {
+            fills.push_str(&format!(
+                r#"<fill><patternFill patternType="solid"><fgColor {fg}/></patternFill></fill>"#
+            ));
+            xfs.push_str(&format!(r#"<xf fontId="0" fillId="{}"/>"#, i + 1));
+        }
+        let styles = format!(
+            "<styleSheet><fonts><font><sz val=\"11\"/></font></fonts>\
+             <fills>{fills}</fills><cellXfs>{xfs}</cellXfs></styleSheet>"
+        );
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", WORKBOOK),
+            ("xl/_rels/workbook.xml.rels", RELS),
+            ("xl/styles.xml", &styles),
+            ("xl/worksheets/sheet1.xml", sheet_xml),
+        ]);
+        xlsx_meaningful(f.path()).remove("S").unwrap()
+    }
+
+    #[test]
+    fn different_theme_colours_without_tint_differ() {
+        let fgs = [r#"theme="4""#, r#"theme="5""#];
+        let diff = read_fills(&fgs, &sheet(&plain_rows(&[("B2", 1), ("B4", 2)])));
+        assert!(diff.meaningful(START, END));
+        let same = read_fills(&fgs, &sheet(&plain_rows(&[("B2", 1), ("B4", 1)])));
+        assert!(!same.meaningful(START, END));
+    }
+
+    #[test]
+    fn different_indexed_colours_differ() {
+        let fgs = [r#"indexed="10""#, r#"indexed="11""#];
+        let diff = read_fills(&fgs, &sheet(&plain_rows(&[("B2", 1), ("B4", 2)])));
+        assert!(diff.meaningful(START, END));
+        let same = read_fills(&fgs, &sheet(&plain_rows(&[("B2", 1), ("B4", 1)])));
+        assert!(!same.meaningful(START, END));
+    }
+
+    fn with_cf(sqref: &str) -> SheetColour {
+        read(&sheet(&format!(
+            "{}<conditionalFormatting sqref=\"{sqref}\"><cfRule type=\"x\"/></conditionalFormatting>",
+            plain_rows(&[])
+        )))
+    }
+
+    #[test]
+    fn conditional_format_outside_the_table_is_not_meaningful() {
+        // Table C2:E6 is zero-based (1,2)-(5,4) with header row 2.
+        let (start, end) = ((1, 2), (5, 4));
+        // Left of the table.
+        assert!(!with_cf("A3:B6").meaningful(start, end));
+        // Right of the table.
+        assert!(!with_cf("F3:G6").meaningful(start, end));
+        // Below the table.
+        assert!(!with_cf("C7:E9").meaningful(start, end));
+        // Above the table (header row and rows before it).
+        assert!(!with_cf("C1:E2").meaningful(start, end));
+        // Control: inside the data area.
+        assert!(with_cf("D4").meaningful(start, end));
+    }
+
+    #[test]
+    fn column_only_sqref_covers_every_row() {
+        // Table A1:C6.
+        assert!(with_cf("B:B").meaningful((0, 0), (5, 2)));
+    }
+
+    #[test]
+    fn row_only_sqref_covers_every_column() {
+        // Table B1:D6 is (0,1)-(5,3); row 3 is a data row, row 1 the header.
+        assert!(with_cf("3:3").meaningful((0, 1), (5, 3)));
+        assert!(!with_cf("1:1").meaningful((0, 1), (5, 3)));
     }
 }
