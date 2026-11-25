@@ -52,7 +52,10 @@ ignored.
   relationship targets are not normalised; `gradientFill` and number-format
   colour (`[Red]`) are not detected; colour set on part of a cell's text (rich
   text) is not detected, only the cell style's font colour is; a hyperlink cell
-  style (blue font) can give a false T3.
+  style (blue font) can give a false T3. When a colour part cannot be read, the
+  file is still classified, with no colour detected for the affected sheet (or
+  for the whole file when the workbook, relationships or styles part is
+  unreadable), so such a table can be T1 or T2.
 - Moving to a REVIEW state later (option C) is a new decision tied to issue #10.
 
 Satisfies: [issue #8](https://github.com/driftsys/tblctl/issues/8),

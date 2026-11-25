@@ -1429,22 +1429,28 @@ fn replace_zip_entry(src: &Path, dst: &Path, name: &str, body: &str) {
 fn a_malformed_extra_sheet_part_does_not_fail_the_file() {
     let d = tempfile::tempdir().unwrap();
     let good = d.path().join("good.xlsx");
-    xlsx(&good, &[("S", rows(4)), ("Hidden", rows(4))], |wb| {
-        wb.worksheet_from_index(0)
-            .unwrap()
-            .write_string_with_format(3, 1, "item 2", &fill())
+    // The hidden sheet comes first in workbook order, so the coloured sheet
+    // is read after the bad part only if the reader continues past it.
+    xlsx(&good, &[("Hidden", rows(4)), ("S", rows(4))], |wb| {
+        wb.worksheet_from_index(0).unwrap().set_hidden(true);
+        // The first sheet is active by default, and an active sheet cannot
+        // be hidden.
+        let ws = wb.worksheet_from_index(1).unwrap();
+        ws.set_active(true);
+        ws.write_string_with_format(3, 1, "item 2", &fill())
             .unwrap();
-        wb.worksheet_from_index(1).unwrap().set_hidden(true);
     });
     let bad_sheet = d.path().join("bad_sheet.xlsx");
     replace_zip_entry(
         &good,
         &bad_sheet,
-        "xl/worksheets/sheet2.xml",
+        "xl/worksheets/sheet1.xml",
         "<worksheet><sheetData></row>",
     );
 
     // The valid sheet keeps its colour result when another sheet part is bad.
     let v = classify_json(&[bad_sheet]);
-    assert_eq!(rule_of(&v, 0).0, "t3");
+    let (rule, reasons) = rule_of(&v, 0);
+    assert_eq!(rule, "t3");
+    assert!(reasons.contains(&"colour".to_string()), "{reasons:?}");
 }

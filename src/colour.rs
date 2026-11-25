@@ -354,9 +354,13 @@ fn part_path(target: &str) -> String {
 /// read from the styles part, the workbook and the sheet parts.
 ///
 /// Colour is extra information: a part that is missing or cannot be parsed
-/// never makes the file unreadable. A bad workbook, relationships or styles
-/// part gives no facts for any sheet; a bad sheet part gives none for that
-/// sheet only.
+/// never makes the file unreadable. The map is empty when the zip cannot be
+/// opened, when the styles part exists but cannot be read or parsed, or when
+/// the workbook or relationships part is missing, unreadable or not
+/// parseable. A missing styles part is not an error: reading continues with
+/// no styles, and conditional formats are still read. A sheet whose relationship
+/// is missing, whose part is missing or cannot be read as text, or whose XML
+/// cannot be parsed has no entry; the other sheets are still read.
 pub fn xlsx_meaningful(path: &Path) -> HashMap<String, SheetColour> {
     try_xlsx_meaningful(path).unwrap_or_default()
 }
@@ -518,12 +522,17 @@ mod tests {
     use std::io::Write as _;
 
     fn zip_xlsx(parts: &[(&str, &str)]) -> tempfile::NamedTempFile {
+        let parts: Vec<(&str, &[u8])> = parts.iter().map(|(n, b)| (*n, b.as_bytes())).collect();
+        zip_xlsx_bytes(&parts)
+    }
+
+    fn zip_xlsx_bytes(parts: &[(&str, &[u8])]) -> tempfile::NamedTempFile {
         let file = tempfile::NamedTempFile::new().unwrap();
         let mut z = zip::ZipWriter::new(file.reopen().unwrap());
         for (name, body) in parts {
             z.start_file(*name, zip::write::SimpleFileOptions::default())
                 .unwrap();
-            z.write_all(body.as_bytes()).unwrap();
+            z.write_all(body).unwrap();
         }
         z.finish().unwrap();
         file
@@ -818,9 +827,11 @@ mod tests {
 
     #[test]
     fn malformed_sheet_part_is_skipped_and_others_are_read() {
+        // The bad sheet comes first in workbook order, so the valid sheet
+        // after it is read only if the loop continues past the bad one.
         let workbook = r#"<workbook xmlns:r="r"><sheets>
-            <sheet name="S" sheetId="1" r:id="rId1"/>
-            <sheet name="Bad" sheetId="2" r:id="rId2"/></sheets></workbook>"#;
+            <sheet name="Bad" sheetId="2" r:id="rId2"/>
+            <sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>"#;
         let rels = r#"<Relationships>
             <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
             <Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>"#;
@@ -833,6 +844,29 @@ mod tests {
                 &sheet(&plain_rows(&[("B3", 1)])),
             ),
             ("xl/worksheets/sheet2.xml", "<worksheet><sheetData></row>"),
+        ]);
+        let mut facts = xlsx_meaningful(f.path());
+        assert!(!facts.contains_key("Bad"));
+        assert!(facts.remove("S").unwrap().meaningful(START, END));
+    }
+
+    #[test]
+    fn sheet_part_that_is_not_text_is_skipped_and_others_are_read() {
+        // Bytes ff fe fd are not valid UTF-8, so the part cannot be read as
+        // text. Only that sheet loses its colour result.
+        let workbook = r#"<workbook xmlns:r="r"><sheets>
+            <sheet name="Bad" sheetId="2" r:id="rId2"/>
+            <sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>"#;
+        let rels = r#"<Relationships>
+            <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
+            <Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>"#;
+        let good = sheet(&plain_rows(&[("B3", 1)]));
+        let f = zip_xlsx_bytes(&[
+            ("xl/workbook.xml", workbook.as_bytes()),
+            ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
+            ("xl/styles.xml", STYLES.as_bytes()),
+            ("xl/worksheets/sheet1.xml", good.as_bytes()),
+            ("xl/worksheets/sheet2.xml", &[0xff, 0xfe, 0xfd]),
         ]);
         let mut facts = xlsx_meaningful(f.path());
         assert!(!facts.contains_key("Bad"));
@@ -905,9 +939,25 @@ mod tests {
     }
 
     #[test]
+    fn conditional_format_on_an_edge_data_cell_is_meaningful() {
+        // Table C2:E6 is zero-based (1,2)-(5,4), header row 2, data rows 3-6.
+        let (start, end) = ((1, 2), (5, 4));
+        // Last data row only.
+        assert!(with_cf("C6").meaningful(start, end));
+        // First data row only.
+        assert!(with_cf("C3").meaningful(start, end));
+        // Last column only.
+        assert!(with_cf("E4").meaningful(start, end));
+        // First column only.
+        assert!(with_cf("C4").meaningful(start, end));
+    }
+
+    #[test]
     fn column_only_sqref_covers_every_row() {
         // Table A1:C6.
         assert!(with_cf("B:B").meaningful((0, 0), (5, 2)));
+        // Column E is outside table A1:C6.
+        assert!(!with_cf("E:E").meaningful((0, 0), (5, 2)));
     }
 
     #[test]
