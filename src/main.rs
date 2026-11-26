@@ -1,5 +1,6 @@
 mod check;
 mod cli;
+mod colour;
 mod commands;
 mod error;
 mod markdown;

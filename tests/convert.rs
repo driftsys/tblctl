@@ -1,6 +1,8 @@
 use assert_cmd::Command;
 use predicates::str::contains;
-use rust_xlsxwriter::{Formula, Workbook};
+use rust_xlsxwriter::{
+    ConditionalFormatCell, ConditionalFormatCellRule, Format, Formula, Workbook,
+};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -1303,4 +1305,152 @@ fn import_as_md_json_writes_aligned_columns_by_default() {
         std::fs::read_to_string(&md).unwrap(),
         "| Id     | Description |\n| ------ | ----------- |\n| Speed  | a           |\n| Torque | bc          |\n"
     );
+}
+
+fn fill() -> Format {
+    Format::new().set_background_color(0xFF0000)
+}
+
+fn green() -> Format {
+    Format::new().set_background_color(0x00FF00)
+}
+
+fn rule_of(v: &serde_json::Value, i: usize) -> (String, Vec<String>) {
+    let o = &v[i];
+    let reasons = o["reasons"]
+        .as_array()
+        .map(|a| a.iter().map(|r| r.as_str().unwrap().to_string()).collect())
+        .unwrap_or_default();
+    (o["rule"].as_str().unwrap().to_string(), reasons)
+}
+
+#[test]
+fn colour_is_t3_unless_decorative() {
+    let d = tempfile::tempdir().unwrap();
+    let varied = d.path().join("varied.xlsx");
+    xlsx(&varied, &[("S", rows(4))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_string_with_format(3, 1, "item 2", &fill())
+            .unwrap();
+    });
+    let header = d.path().join("header.xlsx");
+    xlsx(&header, &[("S", rows(3))], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        ws.write_string_with_format(0, 0, "id", &fill()).unwrap();
+        ws.write_string_with_format(0, 1, "name", &fill()).unwrap();
+    });
+    let bands = d.path().join("bands.xlsx");
+    xlsx(&bands, &[("S", rows(4))], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        for r in [2u32, 4] {
+            ws.write_string_with_format(r, 0, (r - 1).to_string(), &fill())
+                .unwrap();
+            ws.write_string_with_format(r, 1, format!("item {}", r - 1), &fill())
+                .unwrap();
+        }
+    });
+    let cond = d.path().join("cond.xlsx");
+    xlsx(&cond, &[("S", rows(3))], |wb| {
+        let cf = ConditionalFormatCell::new()
+            .set_rule(ConditionalFormatCellRule::GreaterThan(1))
+            .set_format(fill());
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .add_conditional_format(1, 0, 3, 0, &cf)
+            .unwrap();
+    });
+    let offset = d.path().join("offset.xlsx");
+    let offset_data = |ws: &mut rust_xlsxwriter::Worksheet| {
+        for (r, row) in rows(4).iter().enumerate() {
+            for (c, v) in row.iter().enumerate() {
+                ws.write_string(r as u32 + 2, c as u16 + 2, v).unwrap();
+            }
+        }
+        ws.write_string_with_format(2, 2, "id", &fill()).unwrap();
+        ws.write_string_with_format(2, 3, "name", &fill()).unwrap();
+    };
+    xlsx(&offset, &[("S", vec![])], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        offset_data(ws);
+        ws.write_string_with_format(4, 3, "item 1", &fill())
+            .unwrap();
+    });
+    let offset_header = d.path().join("offset_header.xlsx");
+    xlsx(&offset_header, &[("S", vec![])], |wb| {
+        offset_data(wb.worksheet_from_index(0).unwrap());
+    });
+
+    let small = d.path().join("small.xlsx");
+    xlsx(&small, &[("S", rows(2))], |wb| {
+        let ws = wb.worksheet_from_index(0).unwrap();
+        ws.write_string_with_format(1, 1, "item 0", &green())
+            .unwrap();
+        ws.write_string_with_format(2, 1, "item 1", &fill())
+            .unwrap();
+    });
+
+    let files = [varied, header, bands, cond, offset, offset_header, small];
+    let want = ["t3", "t1", "t1", "t3", "t3", "t1", "t3"];
+    for (i, rule) in want.iter().enumerate() {
+        // One call per file: identical tables in one call are duplicates (T0).
+        let v = classify_json(&files[i..=i]);
+        let (got, reasons) = rule_of(&v, 0);
+        assert_eq!(&got, rule, "{:?}", files[i]);
+        if *rule == "t3" {
+            assert!(
+                reasons.contains(&"colour".to_string()),
+                "{:?}: {reasons:?}",
+                files[i]
+            );
+        }
+    }
+}
+
+/// Copies a zip file, replacing the entry `name` with `body`.
+fn replace_zip_entry(src: &Path, dst: &Path, name: &str, body: &str) {
+    let mut zin = zip::ZipArchive::new(std::fs::File::open(src).unwrap()).unwrap();
+    let mut zout = zip::ZipWriter::new(std::fs::File::create(dst).unwrap());
+    for i in 0..zin.len() {
+        let mut entry = zin.by_index(i).unwrap();
+        let entry_name = entry.name().unwrap().to_string();
+        zout.start_file(&entry_name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        if entry_name == name {
+            zout.write_all(body.as_bytes()).unwrap();
+        } else {
+            std::io::copy(&mut entry, &mut zout).unwrap();
+        }
+    }
+    zout.finish().unwrap();
+}
+
+#[test]
+fn a_malformed_extra_sheet_part_does_not_fail_the_file() {
+    let d = tempfile::tempdir().unwrap();
+    let good = d.path().join("good.xlsx");
+    // The hidden sheet comes first in workbook order, so the coloured sheet
+    // is read after the bad part only if the reader continues past it.
+    xlsx(&good, &[("Hidden", rows(4)), ("S", rows(4))], |wb| {
+        wb.worksheet_from_index(0).unwrap().set_hidden(true);
+        // The first sheet is active by default, and an active sheet cannot
+        // be hidden.
+        let ws = wb.worksheet_from_index(1).unwrap();
+        ws.set_active(true);
+        ws.write_string_with_format(3, 1, "item 2", &fill())
+            .unwrap();
+    });
+    let bad_sheet = d.path().join("bad_sheet.xlsx");
+    replace_zip_entry(
+        &good,
+        &bad_sheet,
+        "xl/worksheets/sheet1.xml",
+        "<worksheet><sheetData></row>",
+    );
+
+    // The valid sheet keeps its colour result when another sheet part is bad.
+    let v = classify_json(&[bad_sheet]);
+    let (rule, reasons) = rule_of(&v, 0);
+    assert_eq!(rule, "t3");
+    assert!(reasons.contains(&"colour".to_string()), "{reasons:?}");
 }

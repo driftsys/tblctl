@@ -8,7 +8,7 @@ As built. Code: `src/read.rs`, `src/rules.rs`, `src/write.rs`,
 
 Every reader returns `Grid` values (`src/table.rs`): rows of text with the
 header first, padded to one width, and the facts the rules need (merged data
-cells, formulas, images, number of visible sheets).
+cells, formulas, images, meaningful colour, number of visible sheets).
 
 ## Readers
 
@@ -31,8 +31,19 @@ cells, formulas, images, number of visible sheets).
   cells cannot be ruled out, every XLSB table gets the reason
   `merged cells
   unknown (XLSB)` and is T3.
+- Colour is read for XLSX and XLSM only, by `src/colour.rs` with `zip` +
+  `quick-xml` from `xl/styles.xml`, the workbook relationships (to find each
+  sheet part) and the sheet parts. The colour of a data cell is (fill, font) as
+  written, without theme resolution. A `<c>` element without `s` uses style 0. A
+  cell with no `<c>` element uses the row `s` with `customFormat`, else the
+  column style, else style 0. A cell with the colour of style 0 is uncoloured.
+  The header is the first row of the used range. The rule is
+  [AD-0006](../decisions/0006-meaningful-colour-rule.md). For XLS, XLSB, ODS and
+  DOCX colour is not detected.
 - Images are detected for XLSX only. `calamine` does not expose images in XLS,
-  XLSB or ODS files, so a table with images in those formats is not marked.
+  XLSB or ODS files, so a table with images in those formats is not marked. In
+  XLSX, only the pictures that `calamine` reports (`pictures_with_metadata`)
+  count; charts and shapes are not detected as images.
 - Dates are written as `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM:SS` when the time is
   not midnight, for XLSX, XLS and XLSB dates and ODS ISO dates alike. Whole
   numbers are written without a decimal point.
@@ -52,9 +63,10 @@ First match wins (`src/rules.rs`):
    same run (SHA-256 of the cells); or a header where one cell has the word
    `date` and a different cell has the word `author`, `description` or
    `modification` (whole words, any case).
-2. **T1 Markdown** — one visible sheet, no merged data cells, no images, and
-   within `--max-rows`, `--max-cols` and `--max-cell`.
-3. **T2 CSV** — one visible sheet, no merged data cells, no images, no formulas.
+2. **T1 Markdown** — one visible sheet, no merged data cells, no images, no
+   meaningful colour, and within `--max-rows`, `--max-cols` and `--max-cell`.
+3. **T2 CSV** — one visible sheet, no merged data cells, no images, no
+   meaningful colour, no formulas.
 4. **T3 link** — everything else.
 
 For T0, `reasons` says why the table is skipped (`empty`, `duplicate of …`,
@@ -62,8 +74,21 @@ For T0, `reasons` says why the table is skipped (`empty`, `duplicate of …`,
 earlier rule. With `import --as`, `reasons` also ends with
 `target forced by --as`.
 
-Not detected: whether cell colour carries meaning. Issue #1 lists it for T1 and
-T2; no reader extracts colour yet.
+Meaningful colour (XLSX and XLSM) is the T3 reason `colour`:
+
+- 1 data row: any coloured data cell.
+- 2 or 3 data rows: different colours within one column.
+- 4 or more data rows: any colour that is not a function of (column, row
+  parity). A highlighted total row counts.
+- Any conditional format overlapping a data cell.
+
+Limits of the colour reader: cells or rows without an `r` attribute are dropped
+or misnumbered; conditional formats in `x14` `extLst` are not read; `../`
+relationship targets are not normalised; `gradientFill` and number-format colour
+(`[Red]`) are not detected; colours equal but encoded differently (`rgb` versus
+`theme`) compare as different; colour set on part of a cell's text (rich text)
+is not detected, only the cell style's font colour is; a hyperlink cell style
+(blue font) can give a false T3.
 
 ## Commands
 
@@ -124,7 +149,7 @@ envelope. `classify` and `check` report each unreadable file and continue;
 
 ## Not built
 
-- Colour detection (see Rules).
+- Colour detection for XLS, XLSB, ODS and DOCX (see Readers).
 - OCR of table pictures (out of scope for v0.1).
 - Merges in XLSB files (XLSB tables are T3), and images in XLS, XLSB and ODS
   files (see Readers).
