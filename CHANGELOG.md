@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.0] (2026-11-27)
+
+### Features
+
+- **classify:** classify tables with meaningful cell colour as T3 ([#12])
+  ([e51236a]), refs [#8], [#8], [#8], [#8], [#8], closes [#8], refs [#8], [#8],
+  [#8], [#8]
+- **import:** align Markdown table columns by default ([#7]) ([ed63659])
+- **import:** add --as to force the output format ([#6]) ([cffc037])
+
+[0.2.0]: https://github.com/driftsys/tblctl/compare/v0.1.0...v0.2.0
+[e51236a]: https://github.com/driftsys/tblctl/commit/e51236a
+[#12]: https://github.com/driftsys/tblctl/issues/12
+[#8]: https://github.com/driftsys/tblctl/issues/8
+[ed63659]: https://github.com/driftsys/tblctl/commit/ed63659
+[#7]: https://github.com/driftsys/tblctl/issues/7
+[cffc037]: https://github.com/driftsys/tblctl/commit/cffc037
+[#6]: https://github.com/driftsys/tblctl/issues/6
+
 ## [0.1.0] (2026-11-13)
 
 ### Features
