@@ -1,7 +1,8 @@
 use assert_cmd::Command;
 use predicates::str::contains;
 use rust_xlsxwriter::{
-    ConditionalFormatCell, ConditionalFormatCellRule, Format, Formula, Workbook,
+    Chart, ChartType, ConditionalFormatCell, ConditionalFormatCellRule, ConditionalFormatIconSet,
+    ConditionalFormatIconType, Format, Formula, Shape, Workbook,
 };
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -1453,4 +1454,157 @@ fn a_malformed_extra_sheet_part_does_not_fail_the_file() {
     let (rule, reasons) = rule_of(&v, 0);
     assert_eq!(rule, "t3");
     assert!(reasons.contains(&"colour".to_string()), "{reasons:?}");
+}
+
+/// Rule and reasons of one workbook, classified on its own.
+fn classify_one(file: &Path) -> (String, Vec<String>) {
+    rule_of(&classify_json(&[file.to_path_buf()]), 0)
+}
+
+#[test]
+fn uniform_and_whole_column_fills_are_decorative() {
+    let d = tempfile::tempdir().unwrap();
+    for (name, columns) in [("uniform", 0..2u16), ("column", 1..2u16)] {
+        let file = d.path().join(format!("{name}.xlsx"));
+        xlsx(&file, &[("S", rows(4))], |wb| {
+            let ws = wb.worksheet_from_index(0).unwrap();
+            for r in 1..=4u32 {
+                for c in columns.clone() {
+                    ws.write_string_with_format(r, c, "x", &fill()).unwrap();
+                }
+            }
+        });
+        let (rule, reasons) = classify_one(&file);
+        assert_eq!(rule, "t1", "{name}: {reasons:?}");
+    }
+}
+
+#[test]
+fn a_fill_on_a_one_row_xlsm_table_is_t3() {
+    let d = tempfile::tempdir().unwrap();
+    for name in ["one.xlsx", "one.xlsm"] {
+        let file = d.path().join(name);
+        xlsx(&file, &[("S", rows(1))], |wb| {
+            wb.worksheet_from_index(0)
+                .unwrap()
+                .write_string_with_format(1, 1, "item 0", &fill())
+                .unwrap();
+        });
+        let (rule, reasons) = classify_one(&file);
+        assert_eq!(rule, "t3", "{name}");
+        assert_eq!(reasons, ["colour"], "{name}");
+    }
+}
+
+#[test]
+fn charts_shapes_and_rich_text_colour_are_not_detected() {
+    let d = tempfile::tempdir().unwrap();
+    let chart = d.path().join("chart.xlsx");
+    xlsx(&chart, &[("S", rows(2))], |wb| {
+        let mut chart = Chart::new(ChartType::Column);
+        chart.add_series().set_values("S!$A$2:$A$3");
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .insert_chart(5, 5, &chart)
+            .unwrap();
+    });
+    let shape = d.path().join("shape.xlsx");
+    xlsx(&shape, &[("S", rows(2))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .insert_shape(5, 5, &Shape::textbox().set_text("note"))
+            .unwrap();
+    });
+    let rich = d.path().join("rich.xlsx");
+    xlsx(&rich, &[("S", rows(2))], |wb| {
+        let plain = Format::new();
+        let red = Format::new().set_font_color(0xFF0000);
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_rich_string(1, 1, &[(&plain, "item "), (&red, "0")])
+            .unwrap();
+    });
+    for file in [chart, shape, rich] {
+        let (rule, reasons) = classify_one(&file);
+        assert_eq!(rule, "t1", "{file:?}: {reasons:?}");
+    }
+}
+
+#[test]
+fn colour_in_a_sheet_without_cell_references_is_t3() {
+    let d = tempfile::tempdir().unwrap();
+    let written = d.path().join("written.xlsx");
+    // The coloured cell registers the fill as style 1.
+    xlsx(&written, &[("S", rows(4))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_string_with_format(3, 1, "item 2", &fill())
+            .unwrap();
+    });
+    let mut body = String::from("<worksheet><sheetData>");
+    // Only the last cell of the table is coloured, so numbering that is one
+    // row or column too high moves the colour outside the table. The unit
+    // tests in `src/colour.rs` cover numbering that is too low.
+    for r in 0..5 {
+        let s = u32::from(r == 4);
+        body.push_str(&format!(
+            "<row><c t=\"inlineStr\"><is><t>k{r}</t></is></c>\
+             <c s=\"{s}\" t=\"inlineStr\"><is><t>v{r}</t></is></c></row>"
+        ));
+    }
+    body.push_str("</sheetData></worksheet>");
+    let bare = d.path().join("bare.xlsx");
+    replace_zip_entry(&written, &bare, "xl/worksheets/sheet1.xml", &body);
+
+    let (rule, reasons) = classify_one(&bare);
+    assert_eq!(rule, "t3");
+    assert_eq!(reasons, ["colour"]);
+}
+
+#[test]
+fn an_icon_set_stored_only_in_the_extension_block_is_t3() {
+    let d = tempfile::tempdir().unwrap();
+    let file = d.path().join("stars.xlsx");
+    xlsx(&file, &[("S", rows(3))], |wb| {
+        // Excel 2007 has no three-star icon set, so only the `x14` form is
+        // written.
+        let stars =
+            ConditionalFormatIconSet::new().set_icon_type(ConditionalFormatIconType::ThreeStars);
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .add_conditional_format(1, 0, 3, 0, &stars)
+            .unwrap();
+    });
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&file).unwrap()).unwrap();
+    let mut sheet = String::new();
+    std::io::Read::read_to_string(
+        &mut zip.by_name("xl/worksheets/sheet1.xml").unwrap(),
+        &mut sheet,
+    )
+    .unwrap();
+    assert!(sheet.contains("<xm:sqref>"), "{sheet}");
+    assert!(!sheet.contains("<conditionalFormatting sqref"), "{sheet}");
+
+    let (rule, reasons) = classify_one(&file);
+    assert_eq!(rule, "t3");
+    assert_eq!(reasons, ["colour"]);
+}
+
+#[test]
+fn a_sheet_target_with_dot_dot_makes_the_file_unreadable() {
+    let d = tempfile::tempdir().unwrap();
+    let written = d.path().join("written.xlsx");
+    xlsx(&written, &[("S", rows(2))], |_| {});
+    let rels = "<Relationships><Relationship Id=\"rId1\" \
+        Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" \
+        Target=\"../xl/worksheets/sheet1.xml\"/></Relationships>";
+    let dotted = d.path().join("dotted.xlsx");
+    replace_zip_entry(&written, &dotted, "xl/_rels/workbook.xml.rels", rels);
+
+    tblctl()
+        .arg("classify")
+        .arg(&dotted)
+        .assert()
+        .code(2)
+        .stderr(contains("Worksheet 'S' not found"));
 }
