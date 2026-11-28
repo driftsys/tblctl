@@ -1,7 +1,8 @@
 use assert_cmd::Command;
 use predicates::str::contains;
 use rust_xlsxwriter::{
-    ConditionalFormatCell, ConditionalFormatCellRule, Format, Formula, Workbook,
+    Chart, ChartType, ConditionalFormatCell, ConditionalFormatCellRule, Format, Formula, Shape,
+    Workbook,
 };
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -1453,4 +1454,78 @@ fn a_malformed_extra_sheet_part_does_not_fail_the_file() {
     let (rule, reasons) = rule_of(&v, 0);
     assert_eq!(rule, "t3");
     assert!(reasons.contains(&"colour".to_string()), "{reasons:?}");
+}
+
+/// Rule and reasons of one workbook, classified on its own.
+fn classify_one(file: &Path) -> (String, Vec<String>) {
+    rule_of(&classify_json(&[file.to_path_buf()]), 0)
+}
+
+#[test]
+fn uniform_and_whole_column_fills_are_decorative() {
+    let d = tempfile::tempdir().unwrap();
+    for (name, columns) in [("uniform", 0..2u16), ("column", 1..2u16)] {
+        let file = d.path().join(format!("{name}.xlsx"));
+        xlsx(&file, &[("S", rows(4))], |wb| {
+            let ws = wb.worksheet_from_index(0).unwrap();
+            for r in 1..=4u32 {
+                for c in columns.clone() {
+                    ws.write_string_with_format(r, c, "x", &fill()).unwrap();
+                }
+            }
+        });
+        let (rule, reasons) = classify_one(&file);
+        assert_eq!(rule, "t1", "{name}: {reasons:?}");
+    }
+}
+
+#[test]
+fn a_fill_on_a_one_row_xlsm_table_is_t3() {
+    let d = tempfile::tempdir().unwrap();
+    for name in ["one.xlsx", "one.xlsm"] {
+        let file = d.path().join(name);
+        xlsx(&file, &[("S", rows(1))], |wb| {
+            wb.worksheet_from_index(0)
+                .unwrap()
+                .write_string_with_format(1, 1, "item 0", &fill())
+                .unwrap();
+        });
+        let (rule, reasons) = classify_one(&file);
+        assert_eq!(rule, "t3", "{name}");
+        assert_eq!(reasons, ["colour"], "{name}");
+    }
+}
+
+#[test]
+fn charts_shapes_and_rich_text_colour_are_not_detected() {
+    let d = tempfile::tempdir().unwrap();
+    let chart = d.path().join("chart.xlsx");
+    xlsx(&chart, &[("S", rows(2))], |wb| {
+        let mut chart = Chart::new(ChartType::Column);
+        chart.add_series().set_values("S!$A$2:$A$3");
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .insert_chart(5, 5, &chart)
+            .unwrap();
+    });
+    let shape = d.path().join("shape.xlsx");
+    xlsx(&shape, &[("S", rows(2))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .insert_shape(5, 5, &Shape::textbox().set_text("note"))
+            .unwrap();
+    });
+    let rich = d.path().join("rich.xlsx");
+    xlsx(&rich, &[("S", rows(2))], |wb| {
+        let plain = Format::new();
+        let red = Format::new().set_font_color(0xFF0000);
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_rich_string(1, 1, &[(&plain, "item "), (&red, "0")])
+            .unwrap();
+    });
+    for file in [chart, shape, rich] {
+        let (rule, reasons) = classify_one(&file);
+        assert_eq!(rule, "t1", "{file:?}: {reasons:?}");
+    }
 }

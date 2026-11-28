@@ -295,9 +295,14 @@ fn sheet_colour(xml: &str, styles: &[Colour]) -> Result<SheetColour> {
         cols: Vec::new(),
         conditional: Vec::new(),
     };
-    let mut row = 0u32;
+    // Position of the next row or cell without `r`, numbered as `calamine`
+    // numbers it, so that colour and text land on the same cell.
+    let (mut row, mut col) = (0u32, 0u32);
+    let mut conditional = false;
     loop {
-        match reader.read_event()? {
+        let event = reader.read_event()?;
+        let empty = matches!(event, Event::Empty(_));
+        match event {
             Event::Eof => break,
             Event::Start(e) | Event::Empty(e) => {
                 let num = |k: &str| attr(&e, k).and_then(|v| v.parse::<u32>().ok());
@@ -314,28 +319,45 @@ fn sheet_colour(xml: &str, styles: &[Colour]) -> Result<SheetColour> {
                         }
                     }
                     "row" => {
-                        row = num("r").map_or(row.saturating_add(1), |r| r.saturating_sub(1));
+                        row = num("r").map_or(row, |r| r.saturating_sub(1));
+                        col = 0;
                         let custom =
                             matches!(attr(&e, "customFormat").as_deref(), Some("1" | "true"));
                         if let (true, Some(s)) = (custom, num("s")) {
                             out.rows.insert(row, s as usize);
                         }
-                    }
-                    "c" => {
-                        if let Some((Some(r), Some(c))) =
-                            attr(&e, "r").as_deref().and_then(parse_ref)
-                        {
-                            out.cells.insert((r, c), num("s").unwrap_or(0) as usize);
+                        if empty {
+                            row = row.saturating_add(1);
                         }
                     }
+                    "c" => {
+                        let (r, c) = match attr(&e, "r").as_deref().and_then(parse_ref) {
+                            Some((Some(r), Some(c))) => (r, c),
+                            _ => (row, col),
+                        };
+                        out.cells.insert((r, c), num("s").unwrap_or(0) as usize);
+                        col = c.saturating_add(1);
+                    }
                     "conditionalFormatting" => {
+                        conditional = !empty;
                         if let Some(sqref) = attr(&e, "sqref") {
                             out.conditional.extend(parse_sqref(&sqref));
                         }
                     }
+                    // The Excel 2010 form (`x14` in `extLst`) holds the range
+                    // in a child element instead of an attribute.
+                    "sqref" if conditional && !empty => {
+                        let text = reader.read_text(e.name())?;
+                        out.conditional.extend(parse_sqref(&text));
+                    }
                     _ => {}
                 }
             }
+            Event::End(e) => match e.local_name().as_ref() {
+                "row" => row = row.saturating_add(1),
+                "conditionalFormatting" => conditional = false,
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -965,5 +987,243 @@ mod tests {
         // Table B1:D6 is (0,1)-(5,3); row 3 is a data row, row 1 the header.
         assert!(with_cf("3:3").meaningful((0, 1), (5, 3)));
         assert!(!with_cf("1:1").meaningful((0, 1), (5, 3)));
+    }
+
+    /// Header row and 4 data rows, columns A and B, no `r` on any `<c>`.
+    /// Only the third row's second cell is red.
+    fn rows_without_cell_refs(row_attr: impl Fn(u32) -> String) -> String {
+        let mut out = String::from("<sheetData>");
+        for r in 1..=5 {
+            let s = u32::from(r == 3);
+            out.push_str(&format!("<row{}><c/><c s=\"{s}\"/></row>", row_attr(r)));
+        }
+        out + "</sheetData>"
+    }
+
+    #[test]
+    fn cells_without_a_reference_are_numbered_by_position() {
+        let body = rows_without_cell_refs(|r| format!(" r=\"{r}\""));
+        let sc = read(&sheet(&body));
+        assert!(sc.meaningful((0, 0), (4, 1)));
+        assert_eq!(sc.cell_colour(2, 1), sc.colour_of(1));
+        assert_eq!(sc.cell_colour(2, 0), sc.colour_of(0));
+    }
+
+    #[test]
+    fn rows_without_a_reference_are_numbered_from_the_first() {
+        let sc = read(&sheet(&rows_without_cell_refs(|_| String::new())));
+        assert_eq!(sc.cell_colour(2, 1), sc.colour_of(1));
+        assert_eq!(sc.cell_colour(3, 1), sc.colour_of(0));
+    }
+
+    #[test]
+    fn numbering_continues_after_empty_rows_and_referenced_cells() {
+        // An empty `<row/>` takes one row number. A cell with `r` sets the
+        // column of the cells after it.
+        let body = r#"<sheetData><row/><row/>
+            <row><c r="C3"/><c s="1"/></row>
+            <row r="7"><c s="1"/></row><row><c s="1"/></row></sheetData>"#;
+        let sc = read(&sheet(body));
+        let red = sc.colour_of(1);
+        assert_eq!(sc.cell_colour(2, 3), red);
+        assert_eq!(sc.cell_colour(6, 0), red);
+        assert_eq!(sc.cell_colour(7, 0), red);
+        assert_eq!(sc.cells.len(), 4);
+    }
+
+    /// An Excel 2010 extension block holding one rule on `sqref`.
+    fn x14(wrapper: &str, sqref: &str) -> String {
+        format!(
+            r#"<extLst><ext xmlns:x14="x14"><x14:{wrapper}s><x14:{wrapper} xmlns:xm="xm">
+            <x14:cfRule type="iconSet"/><xm:sqref>{sqref}</xm:sqref>
+            </x14:{wrapper}></x14:{wrapper}s></ext></extLst>"#
+        )
+    }
+
+    fn with_x14(wrapper: &str, sqref: &str) -> SheetColour {
+        read(&sheet(&(plain_rows(&[]) + &x14(wrapper, sqref))))
+    }
+
+    #[test]
+    fn extension_conditional_format_on_data_is_meaningful() {
+        let sc = with_x14("conditionalFormatting", "A1 B3:B4");
+        assert!(sc.meaningful(START, END));
+    }
+
+    #[test]
+    fn extension_conditional_format_on_header_only_is_not() {
+        let sc = with_x14("conditionalFormatting", "A1:C1");
+        assert!(!sc.meaningful(START, END));
+    }
+
+    #[test]
+    fn sqref_outside_conditional_formatting_is_ignored() {
+        // Data validations and sparklines also use `<xm:sqref>`.
+        let sc = with_x14("dataValidation", "B3");
+        assert!(!sc.meaningful(START, END));
+        // Also after a conditional-format block has closed.
+        let body =
+            plain_rows(&[]) + &x14("conditionalFormatting", "A1") + &x14("dataValidation", "B3");
+        assert!(!read(&sheet(&body)).meaningful(START, END));
+    }
+
+    /// Reads a one-sheet workbook with its own styles part.
+    fn read_with_styles(styles: &str, sheet_xml: &str) -> SheetColour {
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", WORKBOOK),
+            ("xl/_rels/workbook.xml.rels", RELS),
+            ("xl/styles.xml", styles),
+            ("xl/worksheets/sheet1.xml", sheet_xml),
+        ]);
+        xlsx_meaningful(f.path()).remove("S").unwrap()
+    }
+
+    #[test]
+    fn row_style_without_custom_format_is_ignored() {
+        let body = r#"<sheetData><row r="3" s="1"/></sheetData>"#;
+        let sc = read(&sheet(body));
+        assert_eq!(sc.cell_colour(2, 0), sc.colour_of(0));
+    }
+
+    #[test]
+    fn automatic_font_colour_is_no_colour() {
+        let styles = r#"<styleSheet>
+            <fonts><font/><font><color auto="1"/></font></fonts>
+            <fills><fill/></fills>
+            <cellXfs><xf fontId="0" fillId="0"/><xf fontId="1" fillId="0"/></cellXfs>
+            </styleSheet>"#;
+        assert_eq!(read_with_styles(styles, &sheet("")).colour_of(1), none());
+    }
+
+    #[test]
+    fn a_pattern_without_a_colour_is_the_default_fill() {
+        // A pattern with a type and no `fgColor` is a fill; one without
+        // `patternType` is not.
+        let styles = r#"<styleSheet><fonts><font/></fonts>
+            <fills><fill/><fill><patternFill patternType="gray125"/></fill>
+            <fill><patternFill/></fill></fills>
+            <cellXfs><xf fontId="0" fillId="0"/><xf fontId="0" fillId="1"/>
+            <xf fontId="0" fillId="2"/></cellXfs></styleSheet>"#;
+        let sc = read_with_styles(styles, &sheet(""));
+        assert_eq!(sc.colour_of(1), (Some("default".to_string()), None));
+        assert_eq!(sc.colour_of(2), none());
+    }
+
+    #[test]
+    fn only_the_colour_of_style_zero_counts_as_uncoloured() {
+        // Style 0 has a theme font colour. Style 1 repeats it; style 2 adds
+        // a fill to it.
+        let styles = r#"<styleSheet>
+            <fonts><font><color theme="1"/></font></fonts>
+            <fills><fill/><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/></patternFill></fill></fills>
+            <cellXfs><xf fontId="0" fillId="0"/><xf fontId="0" fillId="0"/>
+            <xf fontId="0" fillId="1"/></cellXfs></styleSheet>"#;
+        let one_row = |s: u32| {
+            sheet(&format!(
+                r#"<sheetData><row r="2"><c r="A2" s="{s}"/></row></sheetData>"#
+            ))
+        };
+        let data = ((0, 0), (1, 0));
+        assert!(!read_with_styles(styles, &one_row(1)).meaningful(data.0, data.1));
+        assert!(read_with_styles(styles, &one_row(2)).meaningful(data.0, data.1));
+    }
+
+    #[test]
+    fn font_colour_on_a_one_row_table_is_meaningful() {
+        let body = r#"<sheetData><row r="2"><c r="A2" s="2"/></row></sheetData>"#;
+        assert!(read(&sheet(body)).meaningful((0, 0), (1, 0)));
+    }
+
+    #[test]
+    fn cells_left_of_an_offset_table_are_ignored() {
+        // Table C1:E5. A3 is red and outside it.
+        let body = r#"<sheetData><row r="3"><c r="A3" s="1"/></row></sheetData>"#;
+        assert!(!read(&sheet(body)).meaningful((0, 2), (4, 4)));
+    }
+
+    #[test]
+    fn a_column_style_covers_its_whole_range() {
+        let sc = read(&sheet(r#"<cols><col min="1" max="3" style="1"/></cols>"#));
+        let red = sc.colour_of(1);
+        for col in 0..=2 {
+            assert_eq!(sc.cell_colour(1, col), red, "column {col}");
+        }
+        assert_eq!(sc.cell_colour(1, 3), sc.colour_of(0));
+    }
+
+    #[test]
+    fn each_sheet_keeps_its_own_colour_under_its_unescaped_name() {
+        let workbook = r#"<workbook xmlns:r="r"><sheets>
+            <sheet name="Plain" r:id="rId1"/>
+            <sheet name="R&amp;D" r:id="rId2"/></sheets></workbook>"#;
+        let rels = r#"<Relationships>
+            <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
+            <Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>"#;
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", rels),
+            ("xl/styles.xml", STYLES),
+            ("xl/worksheets/sheet1.xml", &sheet(&plain_rows(&[]))),
+            (
+                "xl/worksheets/sheet2.xml",
+                &sheet(&plain_rows(&[("B3", 1)])),
+            ),
+        ]);
+        let facts = xlsx_meaningful(f.path());
+        assert!(!facts["Plain"].meaningful(START, END));
+        assert!(facts["R&D"].meaningful(START, END));
+    }
+
+    #[test]
+    fn a_part_that_breaks_after_a_listed_entry_gives_no_facts() {
+        // The partial list read before the error must not be kept.
+        let workbook = r#"<workbook xmlns:r="r"><sheets>
+            <sheet name="S" r:id="rId1"/></workbook>"#;
+        let rels = r#"<Relationships>
+            <Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Other>"#;
+        for (workbook, rels) in [(workbook, RELS), (WORKBOOK, rels)] {
+            let f = zip_xlsx(&[
+                ("xl/workbook.xml", workbook),
+                ("xl/_rels/workbook.xml.rels", rels),
+                ("xl/styles.xml", STYLES),
+                (
+                    "xl/worksheets/sheet1.xml",
+                    &sheet(&plain_rows(&[("B3", 1)])),
+                ),
+            ]);
+            assert!(xlsx_meaningful(f.path()).is_empty());
+        }
+    }
+
+    #[test]
+    fn missing_relationships_part_gives_no_facts() {
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", WORKBOOK),
+            ("xl/styles.xml", STYLES),
+            (
+                "xl/worksheets/sheet1.xml",
+                &sheet(&plain_rows(&[("B3", 1)])),
+            ),
+        ]);
+        assert!(xlsx_meaningful(f.path()).is_empty());
+    }
+
+    #[test]
+    fn a_sheet_without_a_relationship_does_not_stop_the_others() {
+        let workbook = r#"<workbook xmlns:r="r"><sheets>
+            <sheet name="Lost" r:id="rId9"/>
+            <sheet name="S" r:id="rId1"/></sheets></workbook>"#;
+        let f = zip_xlsx(&[
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", RELS),
+            ("xl/styles.xml", STYLES),
+            (
+                "xl/worksheets/sheet1.xml",
+                &sheet(&plain_rows(&[("B3", 1)])),
+            ),
+        ]);
+        let mut facts = xlsx_meaningful(f.path());
+        assert!(!facts.contains_key("Lost"));
+        assert!(facts.remove("S").unwrap().meaningful(START, END));
     }
 }

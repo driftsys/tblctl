@@ -29,17 +29,19 @@ carry meaningful colour. The header (the first row of the used range) is
 ignored.
 
 - The colour of a data cell is the pair (fill, font) as written in
-  `xl/styles.xml`. Themes are not resolved to RGB. A `<c>` element without `s`
-  uses style 0. A cell with no `<c>` element uses the row style (with
-  `customFormat`), else the column style, else style 0. A cell whose colour
-  equals the colour of style 0 counts as uncoloured, because writers give the
-  default font an explicit theme colour.
+  `xl/styles.xml`. Themes are not resolved to RGB. A row or cell without an `r`
+  attribute takes the next position. A `<c>` element without `s` uses style 0. A
+  cell with no `<c>` element uses the row style (with `customFormat`), else the
+  column style, else style 0. A cell whose colour equals the colour of style 0
+  counts as uncoloured, because writers give the default font an explicit theme
+  colour.
 - 1 data row: any coloured data cell is meaningful.
 - 2 or 3 data rows: different colours within one column are meaningful.
 - 4 or more data rows: colour is decorative if and only if it depends only on
   the column and the parity of the row. Any other variation is meaningful, so a
   highlighted total row is meaningful.
-- Any conditional format whose range overlaps a data cell is meaningful.
+- Any conditional format whose range overlaps a data cell is meaningful,
+  including one stored only in the Excel 2010 (`x14`) extension block.
 - Excel table styles do not use cell styles and are ignored.
 - XLS, XLSB, ODS and DOCX are not checked for colour.
 
@@ -47,15 +49,13 @@ ignored.
 
 - Colours that are equal but encoded differently (for example `rgb` and `theme`)
   compare as different, which can give a false T3.
-- Known limits, accepted: cells or rows without an `r` attribute are dropped or
-  misnumbered; conditional formats in `x14` `extLst` are not read; `../`
-  relationship targets are not normalised; `gradientFill` and number-format
-  colour (`[Red]`) are not detected; colour set on part of a cell's text (rich
-  text) is not detected, only the cell style's font colour is; a hyperlink cell
-  style (blue font) can give a false T3. When a colour part cannot be read, the
-  file is still classified, with no colour detected for the affected sheet (or
-  for the whole file when the workbook, relationships or styles part is
-  unreadable), so such a table can be T1 or T2.
+- Known limits, accepted: `gradientFill` and number-format colour (`[Red]`) are
+  not detected; colour set on part of a cell's text (rich text) is not detected,
+  only the cell style's font colour is; a hyperlink cell style (blue font) can
+  give a false T3. When a colour part cannot be read, the file is still
+  classified, with no colour detected for the affected sheet (or for the whole
+  file when the workbook, relationships or styles part is unreadable), so such a
+  table can be T1 or T2.
 - Moving to a REVIEW state later (option C) is a new decision tied to issue #10.
 
 Satisfies: [issue #8](https://github.com/driftsys/tblctl/issues/8),
