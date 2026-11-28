@@ -1,8 +1,8 @@
 use assert_cmd::Command;
 use predicates::str::contains;
 use rust_xlsxwriter::{
-    Chart, ChartType, ConditionalFormatCell, ConditionalFormatCellRule, Format, Formula, Shape,
-    Workbook,
+    Chart, ChartType, ConditionalFormatCell, ConditionalFormatCellRule, ConditionalFormatIconSet,
+    ConditionalFormatIconType, Format, Formula, Shape, Workbook,
 };
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -1528,4 +1528,80 @@ fn charts_shapes_and_rich_text_colour_are_not_detected() {
         let (rule, reasons) = classify_one(&file);
         assert_eq!(rule, "t1", "{file:?}: {reasons:?}");
     }
+}
+
+#[test]
+fn colour_in_a_sheet_without_cell_references_is_t3() {
+    let d = tempfile::tempdir().unwrap();
+    let written = d.path().join("written.xlsx");
+    // The coloured cell registers the fill as style 1.
+    xlsx(&written, &[("S", rows(4))], |wb| {
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .write_string_with_format(3, 1, "item 2", &fill())
+            .unwrap();
+    });
+    let mut body = String::from("<worksheet><sheetData>");
+    for r in 0..5 {
+        let s = u32::from(r == 3);
+        body.push_str(&format!(
+            "<row><c t=\"inlineStr\"><is><t>k{r}</t></is></c>\
+             <c s=\"{s}\" t=\"inlineStr\"><is><t>v{r}</t></is></c></row>"
+        ));
+    }
+    body.push_str("</sheetData></worksheet>");
+    let bare = d.path().join("bare.xlsx");
+    replace_zip_entry(&written, &bare, "xl/worksheets/sheet1.xml", &body);
+
+    let (rule, reasons) = classify_one(&bare);
+    assert_eq!(rule, "t3");
+    assert_eq!(reasons, ["colour"]);
+}
+
+#[test]
+fn an_icon_set_stored_only_in_the_extension_block_is_t3() {
+    let d = tempfile::tempdir().unwrap();
+    let file = d.path().join("stars.xlsx");
+    xlsx(&file, &[("S", rows(3))], |wb| {
+        // Excel 2007 has no three-star icon set, so only the `x14` form is
+        // written.
+        let stars =
+            ConditionalFormatIconSet::new().set_icon_type(ConditionalFormatIconType::ThreeStars);
+        wb.worksheet_from_index(0)
+            .unwrap()
+            .add_conditional_format(1, 0, 3, 0, &stars)
+            .unwrap();
+    });
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&file).unwrap()).unwrap();
+    let mut sheet = String::new();
+    std::io::Read::read_to_string(
+        &mut zip.by_name("xl/worksheets/sheet1.xml").unwrap(),
+        &mut sheet,
+    )
+    .unwrap();
+    assert!(sheet.contains("<xm:sqref>"), "{sheet}");
+    assert!(!sheet.contains("<conditionalFormatting sqref"), "{sheet}");
+
+    let (rule, reasons) = classify_one(&file);
+    assert_eq!(rule, "t3");
+    assert_eq!(reasons, ["colour"]);
+}
+
+#[test]
+fn a_sheet_target_with_dot_dot_makes_the_file_unreadable() {
+    let d = tempfile::tempdir().unwrap();
+    let written = d.path().join("written.xlsx");
+    xlsx(&written, &[("S", rows(2))], |_| {});
+    let rels = "<Relationships><Relationship Id=\"rId1\" \
+        Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" \
+        Target=\"../xl/worksheets/sheet1.xml\"/></Relationships>";
+    let dotted = d.path().join("dotted.xlsx");
+    replace_zip_entry(&written, &dotted, "xl/_rels/workbook.xml.rels", rels);
+
+    tblctl()
+        .arg("classify")
+        .arg(&dotted)
+        .assert()
+        .code(2)
+        .stderr(contains("Worksheet 'S' not found"));
 }

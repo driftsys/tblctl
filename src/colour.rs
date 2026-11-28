@@ -1226,4 +1226,58 @@ mod tests {
         assert!(!facts.contains_key("Lost"));
         assert!(facts.remove("S").unwrap().meaningful(START, END));
     }
+
+    #[test]
+    fn parse_ref_reads_cells_columns_and_rows() {
+        assert_eq!(parse_ref("A1"), Some((Some(0), Some(0))));
+        assert_eq!(parse_ref("Z2"), Some((Some(1), Some(25))));
+        assert_eq!(parse_ref("AA10"), Some((Some(9), Some(26))));
+        assert_eq!(parse_ref("ba3"), Some((Some(2), Some(52))));
+        assert_eq!(parse_ref("C"), Some((None, Some(2))));
+        assert_eq!(parse_ref("7"), Some((Some(6), None)));
+        for bad in ["", "A0", "1A", "A1B", "$A$1"] {
+            assert_eq!(parse_ref(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn attr_local_matches_the_name_under_any_prefix() {
+        let sheet = BytesStart::from_content(r#"sheet sheetId="1" other:id="rId7""#, 5);
+        assert_eq!(attr_local(&sheet, "id").as_deref(), Some("rId7"));
+    }
+
+    #[test]
+    fn a_referenced_cell_does_not_move_the_row_counter() {
+        // `calamine` takes only the column from the `r` of an earlier cell.
+        let body = r#"<sheetData><row><c r="A5"/></row>
+            <row><c s="1"/></row></sheetData>"#;
+        let sc = read(&sheet(body));
+        assert_eq!(sc.cell_colour(1, 0), sc.colour_of(1));
+    }
+
+    #[test]
+    fn row_style_applies_to_self_closing_and_unreferenced_rows() {
+        let body = r#"<sheetData><row r="3" s="1" customFormat="1"/>
+            <row s="2" customFormat="1"/></sheetData>"#;
+        let sc = read(&sheet(body));
+        assert_eq!(sc.cell_colour(2, 0), sc.colour_of(1));
+        assert_eq!(sc.cell_colour(3, 0), sc.colour_of(2));
+    }
+
+    #[test]
+    fn a_self_closing_conditional_format_does_not_stay_open() {
+        let body = plain_rows(&[])
+            + r#"<conditionalFormatting sqref="A1"/>"#
+            + &x14("dataValidation", "B3");
+        assert!(!read(&sheet(&body)).meaningful(START, END));
+    }
+
+    #[test]
+    fn a_self_closing_sqref_adds_no_range() {
+        let body =
+            plain_rows(&[("B3", 1)]) + "<conditionalFormatting><sqref/></conditionalFormatting>";
+        let sc = read(&sheet(&body));
+        assert!(sc.conditional.is_empty());
+        assert!(sc.meaningful(START, END));
+    }
 }
