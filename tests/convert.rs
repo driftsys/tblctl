@@ -1542,8 +1542,10 @@ fn colour_in_a_sheet_without_cell_references_is_t3() {
             .unwrap();
     });
     let mut body = String::from("<worksheet><sheetData>");
+    // Only the last cell of the table is coloured, so numbering that is off
+    // by one row or column moves the colour outside the table.
     for r in 0..5 {
-        let s = u32::from(r == 3);
+        let s = u32::from(r == 4);
         body.push_str(&format!(
             "<row><c t=\"inlineStr\"><is><t>k{r}</t></is></c>\
              <c s=\"{s}\" t=\"inlineStr\"><is><t>v{r}</t></is></c></row>"

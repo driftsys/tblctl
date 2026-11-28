@@ -1242,8 +1242,10 @@ mod tests {
 
     #[test]
     fn attr_local_matches_the_name_under_any_prefix() {
-        let sheet = BytesStart::from_content(r#"sheet sheetId="1" other:id="rId7""#, 5);
-        assert_eq!(attr_local(&sheet, "id").as_deref(), Some("rId7"));
+        for content in [r#"sheet xr:uid="x" other:id="rId7""#, r#"sheet id="rId7""#] {
+            let sheet = BytesStart::from_content(content, 5);
+            assert_eq!(attr_local(&sheet, "id").as_deref(), Some("rId7"));
+        }
     }
 
     #[test]

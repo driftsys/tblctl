@@ -52,12 +52,14 @@ ignored.
 - Known limits, accepted: `gradientFill` and number-format colour (`[Red]`) are
   not detected; colour set on part of a cell's text (rich text) is not detected,
   only the cell style's font colour is; a hyperlink cell style (blue font) can
-  give a false T3. A sheet target that holds `..` is not normalised, so a
-  visible sheet with such a target normally cannot be read and the file is
-  reported as unreadable. When a colour part cannot be read, the file is still
+  give a false T3. When a colour part cannot be read, the file is still
   classified, with no colour detected for the affected sheet (or for the whole
   file when the workbook, relationships or styles part is unreadable), so such a
   table can be T1 or T2.
+- Open in [issue #13](https://github.com/driftsys/tblctl/issues/13), not an
+  accepted limit: a sheet target that holds `..` is not normalised, so a visible
+  sheet with such a target normally cannot be read and the file is reported as
+  unreadable.
 - Moving to a REVIEW state later (option C) is a new decision tied to issue #10.
 
 Satisfies: [issue #8](https://github.com/driftsys/tblctl/issues/8),
