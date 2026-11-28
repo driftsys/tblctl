@@ -5,8 +5,7 @@
 ### Features
 
 - **classify:** classify tables with meaningful cell colour as T3 ([#12])
-  ([e51236a]), refs [#8], [#8], [#8], [#8], [#8], closes [#8], refs [#8], [#8],
-  [#8], [#8]
+  ([e51236a]), closes [#8]
 - **import:** align Markdown table columns by default ([#7]) ([ed63659])
 - **import:** add --as to force the output format ([#6]) ([cffc037])
 
