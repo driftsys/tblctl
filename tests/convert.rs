@@ -1542,8 +1542,9 @@ fn colour_in_a_sheet_without_cell_references_is_t3() {
             .unwrap();
     });
     let mut body = String::from("<worksheet><sheetData>");
-    // Only the last cell of the table is coloured, so numbering that is off
-    // by one row or column moves the colour outside the table.
+    // Only the last cell of the table is coloured, so numbering that is one
+    // row or column too high moves the colour outside the table. The unit
+    // tests in `src/colour.rs` cover numbering that is too low.
     for r in 0..5 {
         let s = u32::from(r == 4);
         body.push_str(&format!(
